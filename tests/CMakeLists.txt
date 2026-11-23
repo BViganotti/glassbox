@@ -17,3 +17,6 @@ if(NOT GBX_SANITIZER)
   add_test(NAME hooks COMMAND glassbox_hooks_test)
   set_tests_properties(hooks PROPERTIES TIMEOUT 120)
 endif()
+
+target_compile_definitions(glassbox_tests PRIVATE
+  GBX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
