@@ -794,6 +794,46 @@ void register_trace_routes(HttpServer& server, TraceGetter getter,
     response.set_body(writer.str());
   });
 
+  add("/api/state/history", [get](const HttpRequest& request,
+                                     HttpResponse& response) {
+    auto trace = get(request, response);
+    if (!trace) return;
+    const auto key = request.query_value("key");
+    if (key.empty() || key.size() > 512) {
+      response.set_error(400, "a state key is required");
+      return;
+    }
+    const size_t limit = static_cast<size_t>(
+        parse_u64(request.query_value("limit"), 256, 2000));
+    const uint64_t end = trace->end_ts();
+    const uint64_t from =
+        std::min(parse_u64(request.query_value("from"), 0, end), end);
+    const uint64_t to =
+        std::min(parse_u64(request.query_value("to"), end, end), end);
+    const auto points = state_history(*trace, key, limit, from, to);
+    json::Writer writer;
+    writer.begin_object();
+    writer.key_string("key", key);
+    writer.key_integer("count", static_cast<int64_t>(points.size()));
+    writer.key("points");
+    writer.begin_array();
+    for (const auto& point : points) {
+      writer.begin_object();
+      writer.key_integer("ts", static_cast<int64_t>(point.ts));
+      if (point.type == ValueType::String) {
+        writer.key_string("type", "string");
+        writer.key_string("text", point.text);
+      } else {
+        writer.key_string("type", "number");
+        writer.key_number("number", point.number);
+      }
+      writer.end_object();
+    }
+    writer.end_array();
+    writer.end_object();
+    response.set_body(writer.str());
+  });
+
   add("/api/counters", [get](const HttpRequest& request,
                              HttpResponse& response) {
     auto trace = get(request, response);

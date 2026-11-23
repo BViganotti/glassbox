@@ -1266,9 +1266,7 @@
           tr.appendChild(el('td', 'mono', entry.key));
           tr.appendChild(el('td', '', entry.type === 'number' ? fmtNum(entry.number) : entry.text));
           tr.appendChild(el('td', 'num', fmtTime(entry.ts)));
-          tr.addEventListener('click', () => showInspector(`state · ${entry.key}`, [
-            { title: 'value', pairs: [['at', fmtTime(state.at)], ['updated', fmtTime(entry.ts)], ['type', entry.type], ['value', entry.type === 'number' ? fmtNum(entry.number) : entry.text]] },
-          ]));
+          tr.addEventListener('click', () => openStateKey(entry));
           body.appendChild(tr);
         }
       }
@@ -1467,9 +1465,42 @@
         box.appendChild(dl);
       }
       if (section.pre !== undefined) box.appendChild(el('pre', '', section.pre));
+      if (typeof section.build === 'function') {
+        const custom = section.build();
+        if (custom) box.appendChild(custom);
+      }
       body.appendChild(box);
     }
     $('#inspector').classList.remove('hidden');
+  }
+
+  async function openStateKey(entry) {
+    try {
+      const history = await api('/api/state/history', { key: entry.key, limit: 512 });
+      const numeric = history.points.every((point) => point.type === 'number');
+      const sections = [
+        { title: 'state key', pairs: [
+          ['key', entry.key], ['at', fmtTime(state.at)], ['updates', history.count],
+          ['current', entry.type === 'number' ? fmtNum(entry.number) : entry.text],
+        ] },
+      ];
+      if (numeric && history.points.length > 1) {
+        sections.push({ title: 'history', build: () => {
+          const wrap = el('div');
+          const canvas = el('canvas');
+          canvas.style.width = '100%';
+          canvas.style.height = '90px';
+          wrap.appendChild(canvas);
+          requestAnimationFrame(() => drawSparkline(canvas,
+            history.points.map((point) => [point.ts, point.number]), '#5eead4'));
+          wrap.appendChild(el('div', 'muted small', `${history.count} snapshots · ${fmtTime(history.points[0].ts)} → ${fmtTime(history.points[history.points.length - 1].ts)}`));
+          return wrap;
+        } });
+      }
+      sections.push({ title: 'updates', pre: history.points.map((point) =>
+        `${fmtTime(point.ts)}  ${point.type === 'number' ? fmtNum(point.number) : point.text}`).join('\n') || '(none)' });
+      showInspector(`state · ${entry.key}`, sections);
+    } catch (error) { fail(error); }
   }
 
   async function openEvent(id) {
