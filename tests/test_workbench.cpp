@@ -4,7 +4,11 @@
 
 #include <unistd.h>
 
+#include <sys/stat.h>
+
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <thread>
@@ -325,4 +329,39 @@ TEST(workbench_start_twice_is_rejected) {
   CHECK(!status.ok());
   CHECK(status.code() == gbx::ErrorCode::Busy);
   workbench.stop();
+}
+
+TEST(browser_launch_spawns_open_with_token_url) {
+  const std::string dir = temp_dir("browser");
+  const std::string marker = dir + "/open-args.txt";
+  const std::string script = dir + "/open";
+  {
+    std::FILE* file = std::fopen(script.c_str(), "w");
+    CHECK(file != nullptr);
+    if (file) {
+      std::fprintf(file, "#!/bin/sh\nprintf '%%s' \"$1\" > %s\n", marker.c_str());
+      std::fclose(file);
+    }
+    CHECK_EQ(::chmod(script.c_str(), 0755), 0);
+  }
+  const char* old_path = std::getenv("PATH");
+  const std::string saved = old_path ? old_path : "";
+  CHECK_EQ(::setenv("PATH", dir.c_str(), 1), 0);
+  const bool spawned =
+      gbx::open_in_browser("http://127.0.0.1:7331/?t=test-token");
+  ::setenv("PATH", saved.c_str(), 1);
+  CHECK(spawned);
+  std::string captured;
+  for (int i = 0; i < 100; ++i) {
+    std::FILE* file = std::fopen(marker.c_str(), "r");
+    if (file) {
+      char buffer[512] = {};
+      const size_t n = std::fread(buffer, 1, sizeof(buffer) - 1, file);
+      std::fclose(file);
+      captured.assign(buffer, n);
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  CHECK_EQ(captured, std::string("http://127.0.0.1:7331/?t=test-token"));
 }
