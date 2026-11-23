@@ -14,6 +14,7 @@
 #include <thread>
 #include <vector>
 
+#include "alloc/hook_suppress.hpp"
 #include "glassbox/span.hpp"
 #include "trace/trace_writer.hpp"
 
@@ -90,6 +91,7 @@ class Recorder::Impl {
   }
 
   Status start(const std::string& path, TraceMeta meta) {
+    detail::AllocHookSuppress suppress;
     std::lock_guard lifecycle(lifecycle_mu_);
     if (recording_.load()) {
       return Status::error(ErrorCode::Busy, "recorder already recording");
@@ -141,6 +143,7 @@ class Recorder::Impl {
   }
 
   Status finish() {
+    detail::AllocHookSuppress suppress;
     std::thread thread;
     {
       std::lock_guard lifecycle(lifecycle_mu_);
@@ -166,6 +169,7 @@ class Recorder::Impl {
   }
 
   void cancel() {
+    detail::AllocHookSuppress suppress;
     std::thread thread;
     {
       std::lock_guard lifecycle(lifecycle_mu_);
@@ -218,6 +222,7 @@ class Recorder::Impl {
   }
 
   uint32_t thread_slot() {
+    detail::AllocHookSuppress suppress;
     if (!recording_.load()) return 0;
     auto& ctx = thread_context();
     if (ctx.slot == 0) {
@@ -233,6 +238,7 @@ class Recorder::Impl {
   }
 
   void thread_name(std::string_view name) {
+    detail::AllocHookSuppress suppress;
     if (!recording_.load()) return;
     if (name.empty()) return;
     const uint32_t slot = thread_slot();
@@ -249,6 +255,7 @@ class Recorder::Impl {
   // --- emission ------------------------------------------------------------
   void log(LogLevel level, std::string_view message,
            std::string_view category) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -266,6 +273,7 @@ class Recorder::Impl {
   }
 
   void counter(std::string_view name, double value, std::string_view unit) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -279,6 +287,7 @@ class Recorder::Impl {
   }
 
   void gauge(std::string_view name, double value) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -289,6 +298,7 @@ class Recorder::Impl {
   }
 
   void mark(std::string_view label) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -299,6 +309,7 @@ class Recorder::Impl {
 
   void alloc(const void* ptr, size_t size, std::string_view site,
              std::string_view klass, const void* owner) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -317,6 +328,7 @@ class Recorder::Impl {
   }
 
   void free(const void* ptr) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -326,6 +338,7 @@ class Recorder::Impl {
   }
 
   void sample(std::span<const std::string_view> frames, double weight) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -362,6 +375,7 @@ class Recorder::Impl {
   }
 
   void snapshot(std::initializer_list<std::pair<std::string_view, double>> kv) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -381,6 +395,7 @@ class Recorder::Impl {
 
   void snapshot_text(
       std::initializer_list<std::pair<std::string_view, std::string_view>> kv) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -401,6 +416,7 @@ class Recorder::Impl {
 
   uint32_t span_begin(std::string_view name, std::string_view kind,
                       uint32_t parent) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return 0;
     auto slot = thread_slot();
     if (slot == 0) return 0;
@@ -425,6 +441,7 @@ class Recorder::Impl {
   }
 
   void span_end(uint32_t id) {
+    detail::AllocHookSuppress suppress;
     if (!begin()) return;
     auto slot = thread_slot();
     if (slot == 0) return;
@@ -621,6 +638,7 @@ class Recorder::Impl {
   void record_dropped_locked() { ++stats_.records_dropped; }
 
   void writer_loop() {
+    detail::AllocHookSuppress suppress;
     pthread_setname_np("gbx-writer");
     while (true) {
       Pending pending{};
