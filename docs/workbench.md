@@ -28,7 +28,8 @@ requires no terminal interaction: use the browser to close it, or press the
   rejected.
 - A 128-bit token is generated with `arc4random_buf` at startup. It is accepted
   via `X-Glassbox-Token`, the `t` query parameter, or the `gb_token` cookie.
-- The initial URL contains `?t=...`; the index response sets an HttpOnly,
+- The initial URL contains `?t=...`; `at`, `a`, `b` and `q` query parameters
+  provide shareable scrub/A-B/query deep links. The index response sets an HttpOnly,
   SameSite=Strict cookie so subsequent asset requests authenticate without
   JavaScript access to the token.
 - Every route, including static assets, requires the token. Requests without

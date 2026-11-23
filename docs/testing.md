@@ -61,6 +61,22 @@ Notes:
 The exact commands and results used for the release report are recorded in
 `FINAL_REPORT.md`.
 
+Linux is verified end-to-end in a Docker container (Ubuntu 24.04, GCC 13):
+
+```sh
+tools/linux_test.sh
+```
+
+UI smoke (all views, deep-linked query, quit endpoint; requires Chrome):
+
+```sh
+make smoke
+```
+
+`make soak` runs longer deterministic fuzz campaigns and repeated demo
+recordings. `make verify` chains the release build, tests, benchmarks, bundle,
+browser smoke and Linux container check.
+
 ## Fuzzing
 
 The fuzz binary is deterministic and seed-driven, not libFuzzer-based (no
