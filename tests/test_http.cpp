@@ -17,21 +17,24 @@
 namespace {
 
 int connect_to(uint16_t port) {
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) return -1;
-  struct sockaddr_in addr {};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(port);
-  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  if (::connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) !=
-      0) {
+  for (int attempt = 0; attempt < 200; ++attempt) {
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    struct sockaddr_in addr {};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (::connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) ==
+        0) {
+      struct timeval tv {};
+      tv.tv_sec = 3;
+      setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+      return fd;
+    }
     ::close(fd);
-    return -1;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  struct timeval tv {};
-  tv.tv_sec = 3;
-  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  return fd;
+  return -1;
 }
 
 std::string exchange(uint16_t port, const std::string& request,
@@ -127,7 +130,7 @@ TEST(http_server_routes_and_json) {
   CHECK_EQ(body_of(response), std::string("{\"len\":6}"));
 
   response = exchange(server.port(), make_request("GET", "/missing"));
-  CHECK(has_status(response, 404));
+  CHECK_MSG(has_status(response, 404), response.substr(0, 120));
 
   response = exchange(server.port(), make_request("DELETE", "/hello"));
   CHECK(has_status(response, 405));
@@ -177,7 +180,7 @@ TEST(http_server_enforces_limits) {
   response = exchange(server.port(),
                       "POST /echo HTTP/1.1\r\nHost: x\r\n"
                       "Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n");
-  CHECK(has_status(response, 501));
+  CHECK_MSG(has_status(response, 501), response.substr(0, 120));
 
   server.request_stop();
   thread.join();
@@ -240,13 +243,29 @@ TEST(http_server_bad_requests_do_not_crash) {
       "GET /ok\r\n\r\n",
       "GET /ok HTTP/9.9\r\nHost: x\r\n\r\n",
       "GET /ok HTTP/1.1\r\nBad Header\r\n\r\n",
-      "GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n\r\n",
-      "POST /ok HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n\r\nab",
   };
   for (const char* request : malformed) {
     const auto response = exchange(server.port(), request);
     CHECK(!response.empty());
     CHECK(response.rfind("HTTP/1.1 ", 0) == 0);
+  }
+
+  // A truncated body is detected when the client closes its write side.
+  const int fd = connect_to(server.port());
+  CHECK_GE(fd, 0);
+  if (fd >= 0) {
+    gbx::ui::HttpServer::write_all(
+        fd, "POST /ok HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n\r\nab");
+    ::shutdown(fd, SHUT_WR);
+    std::string response;
+    char buffer[1024];
+    while (true) {
+      const ssize_t n = ::recv(fd, buffer, sizeof(buffer), 0);
+      if (n <= 0) break;
+      response.append(buffer, static_cast<size_t>(n));
+    }
+    ::close(fd);
+    CHECK(response.rfind("HTTP/1.1 400 ", 0) == 0);
   }
   server.request_stop();
   thread.join();

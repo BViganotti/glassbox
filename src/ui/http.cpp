@@ -445,6 +445,12 @@ void HttpServer::serve() {
     }
     int one = 1;
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+    // BSD accepted sockets can inherit O_NONBLOCK from the listener; clear it
+    // so the blocking read timeout applies instead of racing EAGAIN.
+    const int client_flags = ::fcntl(fd, F_GETFL, 0);
+    if (client_flags >= 0) {
+      ::fcntl(fd, F_SETFL, client_flags & ~O_NONBLOCK);
+    }
     set_socket_timeout(fd, state_->limits.io_timeout_ms);
     const int active = state_->active.fetch_add(1) + 1;
     if (active > state_->limits.max_connections) {
