@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -137,6 +138,20 @@ struct StateEntry {
 /// Merged state of all Snapshot records up to `at` (last write wins), sorted
 /// by key. Numeric and string values are both represented.
 std::vector<StateEntry> state_at(const Trace& trace, uint64_t at);
+
+struct StatePoint {
+  uint64_t ts = 0;
+  ValueType type = ValueType::Float;
+  double number = 0;
+  std::string text;
+};
+
+/// Chronological history of one state key. Points are evenly downsampled when
+/// they exceed `limit` (endpoints preserved). `to` is inclusive.
+std::vector<StatePoint> state_history(
+    const Trace& trace, std::string_view key, size_t limit = 512,
+    uint64_t from = 0,
+    uint64_t to = std::numeric_limits<uint64_t>::max());
 
 // --- heap ------------------------------------------------------------------
 

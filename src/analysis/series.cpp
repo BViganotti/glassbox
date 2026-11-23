@@ -128,6 +128,57 @@ std::vector<StateEntry> state_at(const Trace& trace, uint64_t at) {
   return out;
 }
 
+std::vector<StatePoint> state_history(const Trace& trace, std::string_view key,
+                                      size_t limit, uint64_t from,
+                                      uint64_t to) {
+  std::vector<StatePoint> points;
+  if (key.empty() || limit == 0) return points;
+  limit = std::min<size_t>(limit, 10000);
+  const auto [first, last] = trace.record_range(from, to);
+  for (size_t i = first; i < last; ++i) {
+    const auto& record = trace.records[i];
+    if (record.type != RecordType::Snapshot) continue;
+    for (const auto& field : record.field_span(trace.fields)) {
+      if (trace.text(field.key) != key) continue;
+      StatePoint point;
+      point.ts = record.ts;
+      switch (field.value.type) {
+        case ValueType::String:
+          point.type = ValueType::String;
+          point.text = std::string(trace.text(field.value.s));
+          break;
+        case ValueType::Int:
+          point.type = ValueType::Float;
+          point.number = static_cast<double>(field.value.i);
+          break;
+        case ValueType::Float:
+          point.type = ValueType::Float;
+          point.number = field.value.f;
+          break;
+        case ValueType::Bool:
+          point.type = ValueType::Float;
+          point.number = field.value.i != 0 ? 1.0 : 0.0;
+          break;
+      }
+      points.push_back(std::move(point));
+    }
+  }
+  if (points.size() > limit) {
+    std::vector<StatePoint> sampled;
+    sampled.reserve(limit);
+    const double step =
+        static_cast<double>(points.size() - 1) / static_cast<double>(limit - 1);
+    for (size_t i = 0; i < limit; ++i) {
+      const size_t index = std::min<size_t>(
+          static_cast<size_t>(static_cast<double>(i) * step + 0.5),
+          points.size() - 1);
+      sampled.push_back(points[index]);
+    }
+    points = std::move(sampled);
+  }
+  return points;
+}
+
 std::string format_state_entry(const StateEntry& entry) {
   if (entry.type == ValueType::String) return entry.text;
   return analysis::format_double(entry.number);
