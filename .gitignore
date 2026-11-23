@@ -9,3 +9,5 @@ compile_commands.json
 .cache/
 !examples/traces/
 !examples/traces/*.gbt
+
+dist/

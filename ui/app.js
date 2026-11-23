@@ -235,6 +235,7 @@
     state.linkAt = params.get('at');
     state.linkA = params.get('a');
     state.linkB = params.get('b');
+    state.linkQuery = params.get('q');
     $('#status-token').textContent = state.token ? 'tok ' + state.token.slice(0, 6) + '…' : 'no token';
   }
 
@@ -1877,6 +1878,13 @@
     await loadTimeline();
     const initial = location.hash.replace('#', '');
     await switchView(VIEW_NAMES.has(initial) ? initial : 'overview', true, false);
+    if (state.linkQuery) {
+      const query = state.linkQuery;
+      state.linkQuery = null;
+      $('#query-input').value = query;
+      await switchView('query', true, false);
+      await runQuery();
+    }
     setStatus(`${state.meta.name} · ${state.view} · ${fmtTime(state.at)}`);
   }
 
@@ -2203,6 +2211,13 @@
     await loadTimeline();
     const initial = location.hash.replace('#', '');
     await switchView(VIEW_NAMES.has(initial) ? initial : 'overview', true, false);
+    if (state.linkQuery) {
+      const query = state.linkQuery;
+      state.linkQuery = null;
+      $('#query-input').value = query;
+      await switchView('query', true, false);
+      await runQuery();
+    }
     setStatus(`${state.meta.name} · ${state.view} · ${fmtTime(state.at)}`);
   }
 

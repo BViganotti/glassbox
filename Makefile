@@ -3,7 +3,7 @@
 BUILD ?= build
 JOBS ?= 8
 
-.PHONY: all configure build test run demo bench fuzz asan tsan clean
+.PHONY: all configure build test run demo bench fuzz asan tsan bundle smoke clean
 
 all: build
 
@@ -44,5 +44,12 @@ tsan:
 	cmake --build build-tsan -j $(JOBS)
 	ctest --test-dir build-tsan --output-on-failure
 
+bundle: build
+	./tools/make_bundle.sh $(BUILD) dist
+	./dist/Glassbox.app/Contents/MacOS/Glassbox --version
+
+smoke: build
+	./tools/ui_smoke.sh $(BUILD)
+
 clean:
-	rm -rf build build-asan build-tsan
+	rm -rf build build-asan build-tsan build-final dist
