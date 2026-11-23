@@ -24,12 +24,14 @@ Threading/lifetime rules are repeated where they matter.
   `TraceDiagnostics`.
 - `Trace`: owned metadata, records, fields, strings, chunk index, diagnostics.
   Methods: `add_record`, `finalize`, `field`, `int_field`, `double_field`,
-  `str_field`, `thread_name`, `record_range`, `memory_usage`.
+  `str_field`, `thread_name`, `record_range`, `memory_usage`,
+  `estimated_memory`. `TraceLimits::max_memory_bytes` bounds the decoded model.
 - `SnapshotView` for iterating snapshot key/value pairs.
 
 `trace_io.hpp`
 
-- `SaveOptions`, `LoadOptions`, `current_meta`, `save_trace`, `load_trace`,
+- `SaveOptions`, `LoadOptions` (streaming/recovery/checksum/memory limits),
+  `current_meta`, `save_trace`, `load_trace` (streams from disk),
   `load_trace_bytes`.
 
 ## Recording
@@ -49,15 +51,19 @@ Threading/lifetime rules are repeated where they matter.
 - `SourceLoc`, `GBX_HERE`, `AllocationSummary`, `AllocationSiteSummary`.
 - `ObjectRegistry` (bounded, thread-safe live objects).
 - `AllocationTracker` (emit alloc/free + registry).
-- `HookConfig`, `install_allocation_hooks`, `uninstall_allocation_hooks`,
-  `allocation_hooks_installed` (only functional when linking `glassbox_hooks`).
+- `HookConfig` (`sample_every`, `min_size`, object budget),
+  `install_allocation_hooks`, `uninstall_allocation_hooks`,
+  `allocation_hooks_installed` (only functional when linking
+  `glassbox_hooks`).
 
 `sample.hpp`
 
 - `SymbolInfo`, `symbolize_address`, `symbolize_pointer`, `short_symbol`.
 - `ManualSampler` (`capture`, `record`).
-- `MachSamplerConfig`, `MachSamplerStats`, `MachSampler` (start/stop/stats).
-- `MachSampler` is macOS-only by implementation.
+- `MachSamplerConfig` (`suspend_threads`), `MachSamplerStats` (including
+  `suspended_threads`), `MachSampler` (start/stop/stats).
+- `MachSampler` is macOS-only; on Linux it validates the config and returns
+  `Unsupported`. `ManualSampler` works on both.
 
 ## Analysis and query
 
@@ -67,8 +73,8 @@ Threading/lifetime rules are repeated where they matter.
   `active_spans`.
 - `TimelineBucket`, `Timeline`, `build_timeline`.
 - `SeriesPoint`, `Series`, `counter_series`, `series_value_at`.
-- `StateEntry`, `state_at`, `StatePoint`, `state_history`,
-  `format_state_entry`.
+- `StateEntry`, `state_at`, `StatePoint`, `state_history` (bounded,
+  downsampled), `format_state_entry`.
 - `HeapAllocation`, `HeapSiteStat`, `HeapObjectView`, `HeapAt`, `HeapOptions`,
   `heap_at`, `live_allocations`, `LeakCandidate`, `leak_candidates`.
 - `FlameNode`, `FlameGraph`, `FlameOptions`, `build_flame`,
