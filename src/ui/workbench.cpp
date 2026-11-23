@@ -271,6 +271,13 @@ struct Workbench::Impl {
                });
   }
 
+  bool allowed_by_roots(const std::string& path) const {
+    for (const auto& root : roots) {
+      if (path_inside(path, root)) return true;
+    }
+    return false;
+  }
+
   Status resolve_trace_path(std::string_view input, std::string& canonical,
                             FileStamp& stamp) {
     if (input.empty() || input.size() > 4096) {
@@ -296,9 +303,7 @@ struct Workbench::Impl {
     if (stamp.bytes > kMaxTraceBytes) {
       return Status::error(ErrorCode::LimitExceeded, "trace file is too large");
     }
-    for (const auto& root : roots) {
-      if (path_inside(canonical, root)) return Status::success();
-    }
+    if (allowed_by_roots(canonical)) return Status::success();
     return Status::error(ErrorCode::PermissionDenied,
                          "trace is outside the allowed directories");
   }
@@ -365,8 +370,13 @@ struct Workbench::Impl {
                    if (ec) continue;
                    for (const auto& item : iterator) {
                      if (entries.size() >= 200) break;
-                     const std::string path = item.path().string();
-                     if (!ends_with_gbt(path)) continue;
+                     if (!ends_with_gbt(item.path().string())) continue;
+                     std::error_code resolve_error;
+                     const auto resolved = std::filesystem::weakly_canonical(
+                         item.path(), resolve_error);
+                     if (resolve_error) continue;
+                     const std::string path = resolved.string();
+                     if (!allowed_by_roots(path)) continue;
                      FileStamp stamp;
                      if (!stat_file(path, stamp)) continue;
                      if (stamp.bytes > kMaxTraceBytes) continue;
@@ -633,8 +643,13 @@ struct Workbench::Impl {
       std::filesystem::directory_iterator iterator(root, ec);
       if (ec) continue;
       for (const auto& item : iterator) {
-        const std::string path = item.path().string();
-        if (!ends_with_gbt(path)) continue;
+        if (!ends_with_gbt(item.path().string())) continue;
+        std::error_code resolve_error;
+        const auto resolved =
+            std::filesystem::weakly_canonical(item.path(), resolve_error);
+        if (resolve_error) continue;
+        const std::string path = resolved.string();
+        if (!allowed_by_roots(path)) continue;
         FileStamp stamp;
         if (!stat_file(path, stamp)) continue;
         if (stamp.bytes > kMaxTraceBytes) continue;
