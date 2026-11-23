@@ -3,7 +3,7 @@
 BUILD ?= build
 JOBS ?= 8
 
-.PHONY: all configure build test run demo bench fuzz asan tsan bundle smoke clean
+.PHONY: all configure build test run demo bench fuzz asan tsan bundle smoke soak linux-test verify clean
 
 all: build
 
@@ -50,6 +50,15 @@ bundle: build
 
 smoke: build
 	./tools/ui_smoke.sh $(BUILD)
+
+soak: build
+	./tools/soak.sh $(BUILD)
+
+linux-test:
+	./tools/linux_test.sh
+
+verify: build
+	./tools/release_check.sh
 
 clean:
 	rm -rf build build-asan build-tsan build-final dist
