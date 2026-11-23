@@ -161,6 +161,7 @@ HeapAt heap_at(const Trace& trace, uint64_t at, const HeapOptions& options) {
     view.owner = allocation.owner;
     view.alloc_ts = allocation.alloc_ts;
     view.age_ns = at > allocation.alloc_ts ? at - allocation.alloc_ts : 0;
+    view.alloc_record = allocation.alloc_record;
     view.site = allocation.site;
     view.klass = allocation.klass;
     result.objects.push_back(std::move(view));

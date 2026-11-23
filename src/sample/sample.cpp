@@ -122,7 +122,7 @@ SymbolInfo symbolize_pointer(const void* pointer) {
 
 std::string short_symbol(std::string_view name, size_t limit) {
   std::string out;
-  const size_t paren = name.find('(');
+  const size_t paren = name.rfind('(');
   std::string_view trimmed = paren == std::string_view::npos
                                  ? name
                                  : name.substr(0, paren);

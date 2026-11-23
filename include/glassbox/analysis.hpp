@@ -169,6 +169,7 @@ struct HeapObjectView {
   uint64_t owner = 0;
   uint64_t alloc_ts = 0;
   uint64_t age_ns = 0;
+  uint32_t alloc_record = 0;
   std::string site;
   std::string klass;
 };

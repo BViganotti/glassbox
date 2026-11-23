@@ -218,6 +218,7 @@ void send_query_error(HttpResponse& response, const QueryError& error) {
 void write_trace_meta(json::Writer& writer, const TraceSnapshot& snapshot) {
   const Trace& trace = *snapshot.trace;
   writer.begin_object();
+  writer.key_string("glassbox_version", GBX_VERSION);
   writer.key_string("name", snapshot.name);
   writer.key_string("path", snapshot.path);
   writer.key_integer("bytes", static_cast<int64_t>(snapshot.bytes));
@@ -652,6 +653,7 @@ void register_trace_routes(HttpServer& server, TraceGetter getter,
       writer.key_string("owner", hex_pointer(object.owner));
       writer.key_integer("alloc_ts", static_cast<int64_t>(object.alloc_ts));
       writer.key_integer("age_ns", static_cast<int64_t>(object.age_ns));
+      writer.key_integer("event_id", static_cast<int64_t>(object.alloc_record));
       writer.key_string("site", object.site);
       writer.key_string("class", object.klass);
       writer.end_object();
