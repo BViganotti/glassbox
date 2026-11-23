@@ -86,3 +86,36 @@ TEST(file_io_creates_parents) {
   CHECK(gbx::trace::is_regular_file(path));
   std::filesystem::remove_all(dir);
 }
+
+TEST(file_reader_incremental_and_limits) {
+  const std::string path = temp_file("reader.bin");
+  const std::vector<uint8_t> data{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  {
+    gbx::trace::FileWriter writer;
+    CHECK(writer.open(path).ok());
+    CHECK(writer.write(data).ok());
+    CHECK(writer.close().ok());
+  }
+  gbx::trace::FileReader reader;
+  CHECK(reader.open(path, data.size()).ok());
+  CHECK_EQ(reader.size(), static_cast<uint64_t>(data.size()));
+  uint8_t first[4] = {};
+  CHECK(reader.read_exact(first, sizeof(first)).ok());
+  CHECK_EQ(first[3], uint8_t{4});
+  CHECK_EQ(reader.remaining(), uint64_t{6});
+  uint8_t too_much[7] = {};
+  const auto status = reader.read_exact(too_much, sizeof(too_much));
+  CHECK(!status.ok());
+  CHECK(status.code() == gbx::ErrorCode::Truncated);
+  CHECK(reader.close().ok());
+
+  gbx::trace::FileReader limited;
+  const auto limit_status = limited.open(path, 4);
+  CHECK(!limit_status.ok());
+  CHECK(limit_status.code() == gbx::ErrorCode::LimitExceeded);
+
+  gbx::trace::FileReader directory;
+  const auto directory_status = directory.open(
+      std::filesystem::temp_directory_path().string(), 1 << 20);
+  CHECK(!directory_status.ok());
+}

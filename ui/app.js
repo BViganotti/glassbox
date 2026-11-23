@@ -180,6 +180,7 @@
     counters: null,
     liveSource: null,
     liveCount: 0,
+    health: null,
     traces: [],
     playing: false,
     playTimer: 0,
@@ -1804,6 +1805,8 @@
     const stats = $('#session-stats');
     clear(stats);
     const rows = [
+      ['platform', state.health?.platform || 'unknown'],
+      ['sampler', state.health?.sampler || 'manual'],
       ['records', fmtNum(meta.records)],
       ['duration', fmtTime(meta.duration_ns)],
       ['threads', (meta.threads || []).length],
@@ -2184,6 +2187,7 @@
     }
     try {
       const health = await api('/api/health');
+      state.health = health;
       $('#version').textContent = 'v' + health.version;
       if (health.recording) startLive();
     } catch (error) {
