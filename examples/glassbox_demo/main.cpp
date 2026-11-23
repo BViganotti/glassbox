@@ -31,6 +31,9 @@ int main(int argc, char** argv) {
       serve = false;
     } else if (arg == "--mach-sampler") {
       demo.use_mach_sampler = true;
+    } else if (arg == "--version") {
+      std::printf("glassbox_demo %s\n", GBX_VERSION);
+      return 0;
     } else if (arg == "--help" || arg == "-h") {
       std::printf(
           "glassbox_demo: records the demo workload then opens the UI\n"

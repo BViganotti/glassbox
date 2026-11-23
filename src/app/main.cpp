@@ -30,6 +30,7 @@ void print_usage() {
       "  --port <n>           loopback port (default: first free of 7331..7340)\n"
       "  --no-browser         do not launch the browser\n"
       "  --no-record          do not record the demo when no trace exists\n"
+      "  --version            print the version\n"
       "  --help               show this message\n",
       GBX_VERSION);
 }
@@ -49,6 +50,10 @@ int main(int argc, char** argv) {
     };
     if (arg == "--help" || arg == "-h") {
       print_usage();
+      return 0;
+    }
+    if (arg == "--version") {
+      std::printf("glassbox %s\n", GBX_VERSION);
       return 0;
     }
     if (arg == "--trace") {

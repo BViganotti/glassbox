@@ -1957,6 +1957,21 @@
     $('#btn-open').addEventListener('click', openTracePicker);
     $('#btn-record').addEventListener('click', openDemoDialog);
     $('#btn-help').addEventListener('click', () => $('#help').classList.remove('hidden'));
+    $('#btn-quit').addEventListener('click', guarded(async () => {
+      if (!window.confirm('Stop the Glassbox workbench? The trace file stays on disk.')) return;
+      try {
+        await api('/api/shutdown', {}, { method: 'POST', body: '{}' });
+      } catch {
+        // The server may close the socket before the response is read.
+      }
+      closeLive();
+      document.body.textContent = '';
+      const panel = el('div', 'empty');
+      panel.style.marginTop = '20vh';
+      panel.appendChild(el('h1', '', 'Glassbox stopped'));
+      panel.appendChild(el('p', 'muted', 'The trace is safe on disk. You can close this tab.'));
+      document.body.appendChild(panel);
+    }));
     $('#help-close').addEventListener('click', () => $('#help').classList.add('hidden'));
     $('#help').addEventListener('click', (event) => { if (event.target === $('#help')) $('#help').classList.add('hidden'); });
     $('#modal-close').addEventListener('click', closeModal);

@@ -82,6 +82,7 @@ button:active { transform: translateY(1px); }
 button.primary { background: linear-gradient(180deg, #1c4b45, #12352f); border-color: #2b6b60; color: #d7fff8; }
 button.primary:hover { border-color: var(--accent-2); }
 button.icon { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; font-size: 14px; }
+button.icon.danger:hover { border-color: var(--red); color: var(--red); }
 button:disabled { opacity: .45; cursor: default; }
 input[type="text"], input[type="search"] {
   background: #0a1017;
