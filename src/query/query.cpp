@@ -672,7 +672,7 @@ std::string_view op_text(TokKind op) {
     case TokKind::Ge: return ">=";
     case TokKind::Contains: return "~";
     case TokKind::NotContains: return "!~";
-    case TokKind::Colon: return ":";
+    case TokKind::Colon: return "=";
     default: return "?";
   }
 }
