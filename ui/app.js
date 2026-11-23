@@ -232,7 +232,18 @@
       history.replaceState(null, '', location.pathname + (suffix ? '?' + suffix : '') + location.hash);
     }
     state.token = sessionStorage.getItem('gbx_token') || '';
+    state.linkAt = params.get('at');
+    state.linkA = params.get('a');
+    state.linkB = params.get('b');
     $('#status-token').textContent = state.token ? 'tok ' + state.token.slice(0, 6) + '…' : 'no token';
+  }
+
+  function resolveMoment(text) {
+    if (text === null || text === undefined || text === '') return null;
+    const value = Number(text);
+    if (!Number.isFinite(value) || value < 0) return null;
+    if (value <= 1) return Math.round(value * state.traceEnd);
+    return Math.min(state.traceEnd, Math.round(value));
   }
 
   /* ------------------------------ views --------------------------------- */
@@ -527,7 +538,7 @@
       api('/api/heap', { at, limit: 1 }),
       api('/api/spans', { at }),
       api('/api/logs', { from: 0, to: at, limit: 7, newest: 1 }),
-      api('/api/events', { from, to, limit: 12, newest: 1 }),
+      api('/api/events', { from: 0, to: at, limit: 12, newest: 1 }),
       api('/api/leaks', { limit: 6 }),
       api('/api/counters', { points: 64 }),
     ]);
@@ -540,7 +551,7 @@
     clear(cards);
     addCard(cards, 'Live heap at T', fmtBytes(heap.total_bytes), `${fmtNum(heap.object_count)} objects · peak ${fmtBytes(heap.peak_bytes)}`);
     const busy = (state.timeline?.buckets || []).reduce((sum, b) => sum + (b.span_ns || 0), 0);
-    addCard(cards, 'Span time in window', fmtTime(busy), `${state.timeline?.buckets?.length || 0} buckets`, 'good');
+    addCard(cards, 'Span time (sum)', fmtTime(busy), 'nested and parallel spans included', 'good');
     addCard(cards, 'Allocations', fmtNum(heap.alloc_count), `${fmtNum(heap.free_count)} frees · ${fmtNum(heap.unknown_frees)} unknown`);
     addCard(cards, 'Errors in trace', fmtNum(state.timeline?.total_errors || 0), `${fmtNum(state.timeline?.total_logs || 0)} log records`, (state.timeline?.total_errors || 0) > 0 ? 'danger' : '');
     addCard(cards, 'Samples', fmtNum(state.timeline?.total_samples || 0), 'stack samples in window');
@@ -1732,9 +1743,18 @@
       stats.appendChild(el('dt', '', key));
       stats.appendChild(el('dd', '', value));
     }
+    const linkedAt = resolveMoment(state.linkAt);
+    if (linkedAt !== null) state.at = clamp(linkedAt, 0, state.traceEnd);
+    const linkedA = resolveMoment(state.linkA);
+    const linkedB = resolveMoment(state.linkB);
+    if (linkedA !== null) state.a = linkedA;
+    if (linkedB !== null) state.b = linkedB;
+    state.linkAt = null;
+    state.linkA = null;
+    state.linkB = null;
     $('#clock').textContent = fmtClock(state.at);
     $('#clock-wall').textContent = wallClock(state.at);
-    $('#heap-at').value = '100';
+    $('#heap-at').value = state.traceEnd > 0 ? String((state.at / state.traceEnd) * 100) : '100';
     $('#heap-at-label').textContent = fmtTime(state.at);
     updateABReadout();
   }
