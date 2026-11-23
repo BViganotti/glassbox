@@ -130,6 +130,77 @@ Status FileWriter::close() {
   return result;
 }
 
+FileReader::~FileReader() {
+  if (fd_ >= 0) ::close(fd_);
+}
+
+Status FileReader::open(const std::string& path, uint64_t max_bytes) {
+  if (fd_ >= 0) return Status::error(ErrorCode::Busy, "reader already open");
+  fd_ = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+  if (fd_ < 0) return errno_status("open " + path);
+  struct stat st {};
+  if (::fstat(fd_, &st) != 0) {
+    const auto status = errno_status("stat " + path);
+    ::close(fd_);
+    fd_ = -1;
+    return status;
+  }
+  if (!S_ISREG(st.st_mode)) {
+    ::close(fd_);
+    fd_ = -1;
+    return Status::error(ErrorCode::InvalidArgument, path + " is not a file");
+  }
+  if (st.st_size < 0 || static_cast<uint64_t>(st.st_size) > max_bytes) {
+    ::close(fd_);
+    fd_ = -1;
+    return Status::error(ErrorCode::LimitExceeded,
+                         path + " exceeds the trace size limit");
+  }
+  size_ = static_cast<uint64_t>(st.st_size);
+  offset_ = 0;
+  path_ = path;
+  return Status::success();
+}
+
+Status FileReader::read_exact(void* out, size_t size) {
+  if (fd_ < 0) return Status::error(ErrorCode::Busy, "reader is closed");
+  if (size > remaining()) {
+    return Status::error(ErrorCode::Truncated,
+                         "unexpected end of " + path_);
+  }
+  auto* bytes = static_cast<uint8_t*>(out);
+  size_t left = size;
+  while (left > 0) {
+    const ssize_t n = ::read(fd_, bytes, left);
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      return errno_status("read " + path_);
+    }
+    if (n == 0) {
+      return Status::error(ErrorCode::Truncated,
+                           "file shrank while reading " + path_);
+    }
+    bytes += static_cast<size_t>(n);
+    left -= static_cast<size_t>(n);
+    offset_ += static_cast<uint64_t>(n);
+  }
+  return Status::success();
+}
+
+Status FileReader::read_exact(std::vector<uint8_t>& out, size_t size) {
+  out.resize(size);
+  if (size == 0) return Status::success();
+  return read_exact(out.data(), size);
+}
+
+Status FileReader::close() {
+  if (fd_ < 0) return Status::success();
+  const int result = ::close(fd_);
+  fd_ = -1;
+  if (result != 0) return errno_status("close " + path_);
+  return Status::success();
+}
+
 Status read_file(const std::string& path, size_t max_bytes,
                  std::vector<uint8_t>& out) {
   out.clear();

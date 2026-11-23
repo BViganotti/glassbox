@@ -60,6 +60,12 @@ Status Trace::add_record(Record record, std::span<const Field> record_fields) {
   if (record_fields.size() > 0xffff) {
     return Status::error(ErrorCode::LimitExceeded, "record field count overflow");
   }
+  const size_t projected = estimated_memory() + sizeof(Record) +
+                           record_fields.size() * sizeof(Field);
+  if (projected > limits_.max_memory_bytes) {
+    return Status::error(ErrorCode::LimitExceeded,
+                         "decoded trace memory budget exceeded");
+  }
   record.first_field = static_cast<uint32_t>(fields.size());
   record.field_count = static_cast<uint16_t>(record_fields.size());
   fields.insert(fields.end(), record_fields.begin(), record_fields.end());
@@ -141,6 +147,12 @@ std::pair<size_t, size_t> Trace::record_range(uint64_t begin_ts,
   if (first >= last) return {0, 0};
   return {static_cast<size_t>(first - records.begin()),
           static_cast<size_t>(last - records.begin())};
+}
+
+size_t Trace::estimated_memory() const {
+  return sizeof(Trace) + records.capacity() * sizeof(Record) +
+         fields.capacity() * sizeof(Field) + strings.bytes() +
+         chunks.capacity() * sizeof(ChunkInfo);
 }
 
 size_t Trace::memory_usage() const {

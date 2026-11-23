@@ -25,6 +25,9 @@ struct LoadOptions {
   TraceLimits limits;
   bool recover_truncated = true;
   bool verify_checksums = true;
+  /// `load_trace` streams chunks from disk by default (peak memory is the
+  /// decoded model plus one chunk). `load_trace_bytes` is unaffected.
+  bool streaming = true;
 };
 
 /// Builds metadata for the current process. `exe_path` may be empty when the

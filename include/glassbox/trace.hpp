@@ -87,12 +87,15 @@ struct ChunkInfo {
 
 /// Bounds applied while loading untrusted trace files.
 struct TraceLimits {
-  size_t max_file_bytes = 512u << 20;
-  size_t max_records = 2'000'000;
-  size_t max_fields = 8'000'000;
-  size_t max_string_bytes = 32u << 20;
-  size_t max_strings = 262144;
+  size_t max_file_bytes = 2ull << 30;
+  size_t max_records = 8'000'000;
+  size_t max_fields = 32'000'000;
+  size_t max_string_bytes = 128u << 20;
+  size_t max_strings = 524288;
   size_t max_string_length = 64u << 10;
+  /// Upper bound for the decoded in-memory model. Crossing it fails with
+  /// LimitExceeded instead of risking the process.
+  size_t max_memory_bytes = 1u << 30;
   uint32_t max_chunks = 65536;
   uint32_t max_threads = 65536;
   uint16_t max_record_fields = kMaxRecordFields;
@@ -103,6 +106,7 @@ struct TraceDiagnostics {
   bool truncated = false;   // the file ends mid-chunk
   bool recovered = false;   // truncated tail was dropped and the rest loaded
   bool checksum_mismatch = false;
+  bool streamed = false;
   std::string warning;
   size_t bytes_read = 0;
 };
@@ -159,6 +163,7 @@ class Trace {
 
   const TraceLimits& limits() const { return limits_; }
   size_t memory_usage() const;
+  size_t estimated_memory() const;
 
  private:
   TraceLimits limits_;

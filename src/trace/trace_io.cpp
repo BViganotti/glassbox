@@ -366,14 +366,225 @@ Status load_impl(std::span<const uint8_t> bytes, Trace& out,
   return Status::success();
 }
 
+Status load_streamed(const std::string& path, Trace& out,
+                     const LoadOptions& options) {
+  out = Trace(options.limits);
+  trace::FileReader file;
+  auto status = file.open(path, options.limits.max_file_bytes);
+  if (!status.ok()) return status;
+  const auto recovery = [&](std::string_view why) -> Status {
+    out.diagnostics.truncated = true;
+    if (!options.recover_truncated) {
+      return Status::error(ErrorCode::Truncated, std::string(why));
+    }
+    out.diagnostics.recovered = true;
+    if (out.diagnostics.warning.empty()) {
+      out.diagnostics.warning = std::string(why);
+    }
+    return Status::success();
+  };
+  if (file.size() < kFileHeaderFixed) {
+    return Status::error(ErrorCode::Truncated, path + " is too short");
+  }
+  std::vector<uint8_t> header(kFileHeaderFixed);
+  status = file.read_exact(header, header.size());
+  if (!status.ok()) return status;
+  if (std::memcmp(header.data(), kMagic.data(), kMagic.size()) != 0) {
+    return corrupt(path + ": bad magic");
+  }
+  ByteReader header_reader(header);
+  header_reader.skip(kMagic.size());
+  uint32_t version = 0;
+  uint32_t flags = 0;
+  uint64_t wall_ns = 0;
+  uint32_t pid = 0;
+  uint32_t meta_count = 0;
+  if (!header_reader.u32(version) || !header_reader.u32(flags) ||
+      !header_reader.u64(wall_ns) || !header_reader.u32(pid) ||
+      !header_reader.u32(meta_count)) {
+    return corrupt("truncated header");
+  }
+  (void)flags;
+  if (version != kVersion) {
+    return Status::error(ErrorCode::Unsupported,
+                         "unsupported trace version " + std::to_string(version));
+  }
+  if (meta_count > kMaxMetaStrings) {
+    return Status::error(ErrorCode::LimitExceeded, "metadata count");
+  }
+  out.meta.wall_start_ns = wall_ns;
+  out.meta.pid = pid;
+  for (uint32_t i = 0; i < meta_count; ++i) {
+    if (file.remaining() < 4) {
+      return Status::error(ErrorCode::Truncated, "truncated metadata length");
+    }
+    uint8_t len_bytes[4] = {};
+    status = file.read_exact(len_bytes, sizeof(len_bytes));
+    if (!status.ok()) return status;
+    const uint32_t length = static_cast<uint32_t>(len_bytes[0]) |
+                            (static_cast<uint32_t>(len_bytes[1]) << 8) |
+                            (static_cast<uint32_t>(len_bytes[2]) << 16) |
+                            (static_cast<uint32_t>(len_bytes[3]) << 24);
+    if (length > options.limits.max_string_length) {
+      return Status::error(ErrorCode::LimitExceeded,
+                           "metadata string too long");
+    }
+    if (length > file.remaining()) {
+      return Status::error(ErrorCode::Truncated, "truncated metadata string");
+    }
+    std::string text(length, '\0');
+    status = file.read_exact(length == 0 ? nullptr : text.data(), length);
+    if (!status.ok()) return status;
+    switch (i) {
+      case 0: out.meta.app_name = std::move(text); break;
+      case 1: out.meta.app_version = std::move(text); break;
+      case 2: out.meta.exe_path = std::move(text); break;
+      case 3: out.meta.arch = std::move(text); break;
+      case 4: out.meta.os = std::move(text); break;
+      default: break;
+    }
+  }
+
+  bool saw_footer = false;
+  uint64_t footer_chunks = 0;
+  uint64_t footer_records = 0;
+  uint64_t footer_duration = 0;
+  std::vector<uint32_t> local_to_global;
+  std::vector<uint8_t> buffer;
+  while (file.remaining() > 0) {
+    if (file.remaining() < 8) {
+      auto recovery_status = recovery("trailing partial record");
+      if (!recovery_status.ok()) return recovery_status;
+      break;
+    }
+    std::vector<uint8_t> magic(8);
+    status = file.read_exact(magic, magic.size());
+    if (!status.ok()) return status;
+    if (std::memcmp(magic.data(), kFooterMagic.data(), 8) == 0) {
+      if (file.remaining() < 28) {
+        auto recovery_status = recovery("partial footer");
+        if (!recovery_status.ok()) return recovery_status;
+        break;
+      }
+      status = file.read_exact(buffer, 28);
+      if (!status.ok()) return status;
+      const uint32_t stored_crc = static_cast<uint32_t>(buffer[24]) |
+                                  (static_cast<uint32_t>(buffer[25]) << 8) |
+                                  (static_cast<uint32_t>(buffer[26]) << 16) |
+                                  (static_cast<uint32_t>(buffer[27]) << 24);
+      if (trace::crc32(std::span<const uint8_t>(buffer.data(), 24)) !=
+          stored_crc) {
+        return corrupt("footer checksum mismatch");
+      }
+      ByteReader footer_tail(std::span<const uint8_t>(buffer.data(), 24));
+      footer_tail.u64(footer_chunks);
+      footer_tail.u64(footer_records);
+      footer_tail.u64(footer_duration);
+      saw_footer = true;
+      break;
+    }
+    if (std::memcmp(magic.data(), kChunkMagic.data(), 8) != 0) {
+      auto recovery_status = recovery("unknown bytes after chunks");
+      if (!recovery_status.ok()) return recovery_status;
+      break;
+    }
+    if (file.remaining() < 12) {
+      auto recovery_status = recovery("partial chunk header");
+      if (!recovery_status.ok()) return recovery_status;
+      break;
+    }
+    status = file.read_exact(buffer, 12);
+    if (!status.ok()) return status;
+    ByteReader chunk_header(std::span<const uint8_t>(buffer.data(), 12));
+    uint32_t payload_len = 0;
+    uint32_t stored_crc = 0;
+    uint32_t chunk_records = 0;
+    chunk_header.u32(payload_len);
+    chunk_header.u32(stored_crc);
+    chunk_header.u32(chunk_records);
+    if (payload_len > kMaxChunkPayload) {
+      return Status::error(ErrorCode::LimitExceeded, "chunk payload too large");
+    }
+    if (file.remaining() < payload_len) {
+      auto recovery_status = recovery("truncated chunk payload");
+      if (!recovery_status.ok()) return recovery_status;
+      break;
+    }
+    status = file.read_exact(buffer, payload_len);
+    if (!status.ok()) return status;
+    const std::span<const uint8_t> payload(buffer.data(), buffer.size());
+    if (options.verify_checksums && trace::crc32(payload) != stored_crc) {
+      return corrupt("chunk checksum mismatch");
+    }
+    if (out.chunks.size() >= options.limits.max_chunks) {
+      return Status::error(ErrorCode::LimitExceeded, "chunk count limit");
+    }
+    ByteReader payload_reader(payload);
+    uint32_t decoded_records = 0;
+    const size_t first_record = out.records.size();
+    status = decode_chunk(payload_reader, options.limits, out,
+                          local_to_global, decoded_records);
+    if (!status.ok()) return status;
+    if (decoded_records != chunk_records) {
+      return corrupt("chunk record count mismatch");
+    }
+    ChunkInfo info;
+    info.file_offset =
+        file.offset() - payload_len - static_cast<uint64_t>(kChunkHeaderSize);
+    info.record_count = decoded_records;
+    if (first_record < out.records.size()) {
+      info.first_ts = out.records[first_record].ts;
+      info.last_ts = info.first_ts;
+      for (size_t i = first_record; i < out.records.size(); ++i) {
+        info.first_ts = std::min(info.first_ts, out.records[i].ts);
+        info.last_ts = std::max(info.last_ts, out.records[i].ts);
+      }
+    }
+    out.chunks.push_back(info);
+  }
+
+  if (!saw_footer) {
+    auto recovery_status = recovery(path + ": missing footer");
+    if (!recovery_status.ok()) return recovery_status;
+  }
+  if (saw_footer && file.remaining() > 0) {
+    return corrupt("trailing bytes after footer");
+  }
+  if (saw_footer) {
+    if (footer_chunks != out.chunks.size() ||
+        footer_records != out.records.size()) {
+      return corrupt("footer does not match decoded content");
+    }
+    if (!out.records.empty() && footer_duration < out.records.back().ts) {
+      return corrupt("footer duration precedes the last record");
+    }
+  }
+  out.meta.recorded_ns =
+      saw_footer ? footer_duration
+                 : (out.records.empty() ? 0 : out.records.back().ts);
+  out.diagnostics.bytes_read = static_cast<size_t>(file.size());
+  out.diagnostics.streamed = true;
+  out.finalize();
+  return Status::success();
+}
+
 }  // namespace
 
 Status load_trace(const std::string& path, Trace& out,
                   const LoadOptions& options) {
-  std::vector<uint8_t> bytes;
-  auto status = trace::read_file(path, options.limits.max_file_bytes, bytes);
-  if (!status.ok()) return status;
-  return load_trace_bytes(bytes, out, options, path);
+  try {
+    if (options.streaming) return load_streamed(path, out, options);
+    std::vector<uint8_t> bytes;
+    auto status = trace::read_file(path, options.limits.max_file_bytes, bytes);
+    if (!status.ok()) return status;
+    return load_trace_bytes(bytes, out, options, path);
+  } catch (const std::bad_alloc&) {
+    return Status::error(ErrorCode::LimitExceeded,
+                         path + ": out of memory while decoding");
+  } catch (const std::exception& e) {
+    return Status::error(ErrorCode::Internal,
+                         path + ": " + std::string(e.what()));
+  }
 }
 
 Status load_trace_bytes(std::span<const uint8_t> bytes, Trace& out,
