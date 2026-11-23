@@ -21,12 +21,15 @@ include/glassbox/*.hpp        public API (documented, stable-ish)
         +-- demo/        scripted workload (uses recorder + analysis helpers)
         +-- ui/          JSON, HTTP/SSE server, auth, trace registry, routes,
                          workbench lifecycle, browser launch, assets
+        +-- platform/    thread names, random tokens, no-SIGPIPE sends, browser
 ```
 
 Dependency direction is one-way: `ui` depends on `analysis`, `query`, `trace`,
-`recorder`, `demo`; `analysis` depends only on `trace`; `recorder` depends on
-`trace` and the allocator suppression bridge; `trace` depends on nothing but the
-standard library and POSIX file APIs. No layer includes a UI header.
+`recorder`, `demo`, `platform`; `analysis` depends only on `trace`; `recorder`
+depends on `trace`, the allocator suppression bridge and `platform`; `trace`
+depends on nothing but the standard library and POSIX file APIs. No layer
+includes a UI header. macOS-only Mach code is compiled conditionally; Linux uses
+the same seam with manual sampling.
 
 ## Data flow
 
@@ -48,7 +51,9 @@ application ── > Recorder (producer threads)
                    HTTP JSON routes ──> workbench UI (canvas/DOM)
 ```
 
-The file is the source of truth and is streamed chunk-by-chunk by the loader. The UI never holds mutable analysis state;
+The file is the source of truth and is streamed chunk-by-chunk by the loader
+(peak memory is the decoded model plus one chunk), with a decoded-memory budget
+that rejects oversized models instead of risking the process. The UI never holds mutable analysis state;
 every endpoint reconstructs its view from the immutable `Trace` snapshot under
 a mutex-held `shared_ptr`. Opening a new trace swaps the pointer atomically from
 the reader's perspective.
@@ -108,8 +113,9 @@ an incomplete tail is either recovered (default) or rejected
 `tests/` contains one unit binary (globbed sources) plus a separate hooks test
 that links the allocator replacement library. `fuzz/` is a single executable
 with deterministic modes; `bench/` is a normal executable, not a ctest target.
-Sanitizer builds reuse the same tree with `GBX_SANITIZER`. There are no CI
-workflows in the repository.
+Sanitizer builds reuse the same tree with `GBX_SANITIZER`. Linux verification
+runs the same suite in a Docker container (`tools/linux_test.sh`). There are no
+CI workflows in the repository.
 
 ## Public API surface
 
