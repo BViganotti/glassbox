@@ -19,6 +19,7 @@
 #include <thread>
 
 #include "glassbox/json.hpp"
+#include "platform/platform.hpp"
 
 namespace gbx::ui {
 namespace {
@@ -447,8 +448,8 @@ void HttpServer::wait() {
 bool HttpServer::write_all(int fd, std::string_view data) {
   size_t offset = 0;
   while (offset < data.size()) {
-    const ssize_t n =
-        ::send(fd, data.data() + offset, data.size() - offset, 0);
+    const ssize_t n = platform::send_bytes(fd, data.data() + offset,
+                                          data.size() - offset);
     if (n < 0) {
       if (errno == EINTR) continue;
       return false;
@@ -481,8 +482,7 @@ void HttpServer::serve() {
       if (state_->stop.load()) break;
       continue;
     }
-    int one = 1;
-    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+    platform::set_no_sigpipe(fd);
     // BSD accepted sockets can inherit O_NONBLOCK from the listener; clear it
     // so the blocking read timeout applies instead of racing EAGAIN.
     const int client_flags = ::fcntl(fd, F_GETFL, 0);
@@ -501,15 +501,15 @@ void HttpServer::serve() {
     std::thread([state, fd] {
       struct sockaddr_in peer {};
       socklen_t peer_length = sizeof(peer);
-      std::string client;
+      std::string client_address;
       if (::getpeername(fd, reinterpret_cast<struct sockaddr*>(&peer),
                         &peer_length) == 0) {
         char text[INET_ADDRSTRLEN] = {};
         if (::inet_ntop(AF_INET, &peer.sin_addr, text, sizeof(text)) != nullptr) {
-          client = text;
+          client_address = text;
         }
       }
-      handle_connection_state(state, fd, client);
+      handle_connection_state(state, fd, client_address);
       ::close(fd);
       {
         std::lock_guard lock(state->wait_mu);

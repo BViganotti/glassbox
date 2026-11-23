@@ -57,6 +57,10 @@ struct MachSamplerConfig {
   size_t max_frames = 24;        // clamp: 1 .. 64
   uint32_t max_threads = 32;     // clamp: 1 .. 256
   bool capture_frame_pointers = true;
+  /// Briefly suspend each non-sampler thread while reading registers and
+  /// walking its stack, then resume before symbolizing. This gives consistent
+  /// stacks; it is on by default and can be disabled for unusual hosts.
+  bool suspend_threads = true;
 };
 
 struct MachSamplerStats {
@@ -65,6 +69,7 @@ struct MachSamplerStats {
   uint64_t frames = 0;
   uint64_t failed_states = 0;
   uint64_t errors = 0;
+  uint64_t suspended_threads = 0;
 };
 
 /// Periodic sampler for this process using Mach thread states. It captures the

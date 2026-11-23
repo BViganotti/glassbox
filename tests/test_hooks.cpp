@@ -161,3 +161,31 @@ TEST(hooks_sampling_reduces_records) {
   CHECK(gbx::load_trace(sampled, b).ok());
   CHECK_GT(count_trace(a).allocs, count_trace(b).allocs);
 }
+
+TEST(hooks_min_size_filters_small_allocations) {
+  const std::string path = temp_path("min-size.gbt");
+  gbx::Recorder rec;
+  CHECK(rec.start(path).ok());
+  gbx::HookConfig config;
+  config.recorder = &rec;
+  config.min_size = 512;
+  CHECK(gbx::install_allocation_hooks(config).ok());
+  void* tiny = ::operator new(32);
+  ::operator delete(tiny);
+  void* medium = ::operator new(1024);
+  ::operator delete(medium);
+  gbx::uninstall_allocation_hooks();
+  CHECK(rec.finish().ok());
+  gbx::Trace trace;
+  CHECK(gbx::load_trace(path, trace).ok());
+  size_t small_allocs = 0;
+  size_t large_allocs = 0;
+  for (const auto& record : trace.records) {
+    if (record.type != gbx::RecordType::Alloc) continue;
+    const auto size = trace.int_field(record, "size", 0);
+    if (size < 512) ++small_allocs;
+    if (size >= 1024) ++large_allocs;
+  }
+  CHECK_EQ(small_allocs, size_t{0});
+  CHECK_GE(large_allocs, size_t{1});
+}

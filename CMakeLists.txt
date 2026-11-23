@@ -50,6 +50,7 @@ file(GLOB GBX_ANALYSIS_SOURCES CONFIGURE_DEPENDS src/analysis/*.cpp)
 file(GLOB GBX_QUERY_SOURCES CONFIGURE_DEPENDS src/query/*.cpp)
 file(GLOB GBX_UI_SOURCES CONFIGURE_DEPENDS src/ui/*.cpp)
 file(GLOB GBX_DEMO_SOURCES CONFIGURE_DEPENDS src/demo/*.cpp)
+file(GLOB GBX_PLATFORM_SOURCES CONFIGURE_DEPENDS src/platform/*.cpp)
 
 add_library(glassbox STATIC
   ${GBX_TRACE_SOURCES}
@@ -60,6 +61,7 @@ add_library(glassbox STATIC
   ${GBX_QUERY_SOURCES}
   ${GBX_UI_SOURCES}
   ${GBX_DEMO_SOURCES}
+  ${GBX_PLATFORM_SOURCES}
   ${GBX_ASSETS_CPP})
 add_library(glassbox::glassbox ALIAS glassbox)
 target_include_directories(glassbox PUBLIC
@@ -67,11 +69,15 @@ target_include_directories(glassbox PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${GBX_GENERATED_DIR})
 target_link_libraries(glassbox PUBLIC gbx_flags)
-target_compile_definitions(glassbox PUBLIC
-  GBX_VERSION="${PROJECT_VERSION}"
-  _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
+target_compile_definitions(glassbox PUBLIC GBX_VERSION="${PROJECT_VERSION}")
+if(APPLE)
+  target_compile_definitions(glassbox PUBLIC
+    _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
+else()
+  target_compile_definitions(glassbox PRIVATE _GNU_SOURCE)
+endif()
 find_package(Threads REQUIRED)
-target_link_libraries(glassbox PUBLIC Threads::Threads)
+target_link_libraries(glassbox PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 
 # Opt-in global new/delete interception. Never linked into the main binary or
 # sanitizer builds; consumers must opt in explicitly.

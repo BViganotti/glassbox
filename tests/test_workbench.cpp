@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Bruno Viganotti
 // SPDX-License-Identifier: MIT
 #include "glassbox/workbench.hpp"
+#include "platform/platform.hpp"
 
 #include <unistd.h>
 
@@ -334,7 +335,7 @@ TEST(workbench_start_twice_is_rejected) {
 TEST(browser_launch_spawns_open_with_token_url) {
   const std::string dir = temp_dir("browser");
   const std::string marker = dir + "/open-args.txt";
-  const std::string script = dir + "/open";
+  const std::string script = dir + "/" + gbx::platform::browser_command();
   {
     std::FILE* file = std::fopen(script.c_str(), "w");
     CHECK(file != nullptr);

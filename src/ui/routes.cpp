@@ -23,8 +23,8 @@
 namespace gbx::ui {
 namespace {
 
-constexpr uint32_t kMaxEvents = 1000;
-constexpr uint32_t kMaxFlameNodes = 30000;
+constexpr uint32_t kMaxEvents = 5000;
+constexpr uint32_t kMaxFlameNodes = 100000;
 
 uint64_t parse_u64(std::string_view text, uint64_t fallback, uint64_t limit) {
   if (text.empty()) return fallback;
@@ -611,7 +611,7 @@ void register_trace_routes(HttpServer& server, TraceGetter getter,
     const uint64_t at = param_at(request, *trace);
     HeapOptions options;
     options.max_objects = static_cast<size_t>(
-        parse_u64(request.query_value("limit"), 500, 5000));
+        parse_u64(request.query_value("limit"), 500, 20000));
     options.max_sites = 256;
     const HeapAt heap = heap_at(*trace, at, options);
     json::Writer writer;
@@ -670,7 +670,7 @@ void register_trace_routes(HttpServer& server, TraceGetter getter,
     const uint64_t at = param_at(request, *trace);
     HeapGraphOptions options;
     options.max_nodes = static_cast<size_t>(
-        parse_u64(request.query_value("nodes"), 4000, 20000));
+        parse_u64(request.query_value("nodes"), 4000, 50000));
     options.max_edges = 100000;
     const HeapGraph graph = build_heap_graph(*trace, at, options);
     json::Writer writer;
@@ -876,7 +876,7 @@ void register_trace_routes(HttpServer& server, TraceGetter getter,
     if (!trace) return;
     const uint64_t at = param_at(request, *trace);
     const size_t limit = static_cast<size_t>(
-        parse_u64(request.query_value("limit"), 500, 5000));
+        parse_u64(request.query_value("limit"), 500, 20000));
     HeapOptions heap_options;
     heap_options.max_objects = limit;
     heap_options.max_sites = 256;

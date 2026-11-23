@@ -6,6 +6,7 @@ list(FILTER GBX_TEST_SOURCES EXCLUDE REGEX "test_hooks\\.cpp$")
 
 add_executable(glassbox_tests test_main.cpp ${GBX_TEST_SOURCES})
 target_link_libraries(glassbox_tests PRIVATE glassbox)
+set_target_properties(glassbox_tests PROPERTIES ENABLE_EXPORTS TRUE)
 add_test(NAME unit COMMAND glassbox_tests)
 set_tests_properties(unit PROPERTIES TIMEOUT 300)
 

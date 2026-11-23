@@ -28,6 +28,9 @@ namespace gbx {
 struct HookConfig {
   Recorder* recorder = nullptr;
   uint32_t sample_every = 1;
+  /// Ignore allocations smaller than this many bytes. Useful to keep the
+  /// trace focused when a host allocates many tiny objects.
+  size_t min_size = 0;
   size_t max_tracked_objects = 200000;
 };
 

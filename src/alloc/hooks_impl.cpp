@@ -28,6 +28,7 @@ struct Runtime {
 
   AllocationTracker tracker;
   uint32_t sample_every = 1;
+  size_t min_size = 0;
   std::atomic<uint64_t> counter{0};
 };
 
@@ -60,6 +61,7 @@ std::string site_from_address(void* address) {
 void track_alloc(void* ptr, size_t size, void* return_address) {
   Runtime* runtime = g_runtime.load(std::memory_order_acquire);
   if (runtime == nullptr || g_in_hook || detail::alloc_hooks_suppressed()) return;
+  if (size < runtime->min_size) return;
   if (runtime->sample_every > 1) {
     const uint64_t n = runtime->counter.fetch_add(1, std::memory_order_relaxed);
     if (n % runtime->sample_every != 0) return;
@@ -129,6 +131,7 @@ Status install_allocation_hooks(const HookConfig& config) {
   }
   auto* runtime = new Runtime(*config.recorder, config.max_tracked_objects);
   runtime->sample_every = config.sample_every;
+  runtime->min_size = config.min_size;
   g_runtime.store(runtime, std::memory_order_release);
   return Status::success();
 }

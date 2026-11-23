@@ -30,6 +30,7 @@
 #include "ui/http.hpp"
 #include "ui/live.hpp"
 #include "ui/routes.hpp"
+#include "platform/platform.hpp"
 #include "ui/serialize.hpp"
 
 extern char** environ;
@@ -48,7 +49,7 @@ uint64_t now_ms() {
 
 std::string random_token() {
   unsigned char bytes[16] = {};
-  ::arc4random_buf(bytes, sizeof(bytes));
+  platform::random_bytes(bytes, sizeof(bytes));
   static const char* hex = "0123456789abcdef";
   std::string out;
   out.reserve(32);
@@ -349,6 +350,13 @@ struct Workbench::Impl {
                  writer.key_boolean("recording", demo_running.load());
                  writer.key_integer("live_dropped",
                                     static_cast<int64_t>(live.dropped()));
+#if defined(__APPLE__)
+                 writer.key_string("platform", "macos");
+                 writer.key_string("sampler", "mach");
+#else
+                 writer.key_string("platform", "linux");
+                 writer.key_string("sampler", "manual");
+#endif
                  writer.end_object();
                  response.set_body(writer.str());
                });
@@ -754,8 +762,10 @@ struct Workbench::Impl {
 bool open_in_browser(std::string_view url) {
   pid_t pid = 0;
   std::string target(url);
-  char* argv[] = {const_cast<char*>("open"), target.data(), nullptr};
-  const int rc = ::posix_spawnp(&pid, "open", nullptr, nullptr, argv, environ);
+  char* argv[] = {const_cast<char*>(platform::browser_command()), target.data(),
+                  nullptr};
+  const int rc = ::posix_spawnp(&pid, platform::browser_command(), nullptr,
+                                nullptr, argv, environ);
   return rc == 0;
 }
 

@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "alloc/hook_suppress.hpp"
+#include "platform/platform.hpp"
 #include "glassbox/span.hpp"
 #include "trace/trace_writer.hpp"
 
@@ -37,11 +38,8 @@ uint64_t monotonic_ns() {
 }
 
 std::string default_thread_name(unsigned slot) {
-  char buffer[64] = {};
-  if (pthread_getname_np(pthread_self(), buffer, sizeof(buffer)) == 0 &&
-      buffer[0] != '\0') {
-    return std::string(buffer);
-  }
+  std::string name = platform::current_thread_name();
+  if (!name.empty()) return name;
   return "Thread " + std::to_string(slot);
 }
 
@@ -639,7 +637,7 @@ class Recorder::Impl {
 
   void writer_loop() {
     detail::AllocHookSuppress suppress;
-    pthread_setname_np("gbx-writer");
+    platform::set_current_thread_name("gbx-writer");
     while (true) {
       Pending pending{};
       bool have = false;

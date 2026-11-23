@@ -3,15 +3,20 @@
 #include "glassbox/sample.hpp"
 
 #include <dlfcn.h>
+#include <pthread.h>
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <unistd.h>
+
+#if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
-#include <pthread.h>
-
 #if defined(__aarch64__)
 #include <mach/arm/thread_status.h>
 #elif defined(__x86_64__)
 #include <mach/i386/thread_status.h>
+#endif
 #endif
 
 #include <cxxabi.h>
@@ -29,6 +34,7 @@
 #include <vector>
 
 #include "alloc/hook_suppress.hpp"
+#include "platform/platform.hpp"
 
 namespace gbx {
 namespace {
@@ -51,12 +57,25 @@ std::string demangle(std::string_view name) {
 /// Reads memory from our own task without risking a fault on a bad pointer.
 bool safe_read(uintptr_t address, void* out, size_t size) {
   if (address == 0 || size == 0) return false;
+#if defined(__APPLE__)
   mach_vm_size_t read = 0;
   const kern_return_t kr = mach_vm_read_overwrite(
       mach_task_self(), static_cast<mach_vm_address_t>(address),
       static_cast<mach_vm_size_t>(size),
       reinterpret_cast<mach_vm_address_t>(out), &read);
   return kr == KERN_SUCCESS && read == size;
+#else
+  // process_vm_readv never faults the sampler on an invalid frame. The
+  // _GNU_SOURCE definition is provided by CMake for this target.
+  struct iovec local {};
+  local.iov_base = out;
+  local.iov_len = size;
+  struct iovec remote {};
+  remote.iov_base = reinterpret_cast<void*>(address);
+  remote.iov_len = size;
+  const ssize_t read = ::process_vm_readv(::getpid(), &local, 1, &remote, 1, 0);
+  return read == static_cast<ssize_t>(size);
+#endif
 }
 
 constexpr size_t kMaxStackSpan = 1u << 20;  // 1 MiB of stack per walk
@@ -160,6 +179,7 @@ void ManualSampler::capture(std::string_view phase, size_t max_frames) {
 
 // ---------------------------------------------------------------------------
 
+#if defined(__APPLE__)
 struct MachSampler::Impl {
   MachSamplerConfig config;
   std::thread thread;
@@ -172,10 +192,11 @@ struct MachSampler::Impl {
   std::atomic<uint64_t> frames{0};
   std::atomic<uint64_t> failed_states{0};
   std::atomic<uint64_t> errors{0};
+  std::atomic<uint64_t> suspended_threads{0};
 
   void loop() {
     detail::AllocHookSuppress suppress;
-    pthread_setname_np("gbx-sampler");
+    platform::set_current_thread_name("gbx-sampler");
     std::unique_lock lock(mu);
     while (!stop_requested) {
       lock.unlock();
@@ -198,9 +219,22 @@ struct MachSampler::Impl {
             count, std::min<uint32_t>(config.max_threads, 256)));
     bool recorded = false;
     std::vector<uintptr_t> frame_pcs;
+    frame_pcs.reserve(config.max_frames);
+    const thread_t self_port = pthread_mach_thread_np(pthread_self());
     for (mach_msg_type_number_t i = 0; i < limit; ++i) {
       thread_t thread_port = threads[i];
       if (thread_port == MACH_PORT_NULL) continue;
+      if (thread_port == self_port) {
+        mach_port_deallocate(mach_task_self(), thread_port);
+        continue;
+      }
+      bool suspended = false;
+      if (config.suspend_threads) {
+        if (thread_suspend(thread_port) == KERN_SUCCESS) {
+          suspended = true;
+          ++suspended_threads;
+        }
+      }
 #if defined(__aarch64__)
       arm_thread_state64_t state{};
       mach_msg_type_number_t state_count = ARM_THREAD_STATE64_COUNT;
@@ -224,17 +258,24 @@ struct MachSampler::Impl {
       const uintptr_t pc = 0;
       const uintptr_t fp = 0;
 #endif
-      if (kr != KERN_SUCCESS || pc == 0) {
+      const bool state_ok = kr == KERN_SUCCESS && pc != 0;
+      if (state_ok) {
+        ++thread_states;
+        frame_pcs.clear();
+        if (config.capture_frame_pointers) {
+          walk_frame_pointers(pc, fp, frame_pcs, config.max_frames);
+        } else {
+          frame_pcs.push_back(pc);
+        }
+      }
+      if (suspended) {
+        thread_resume(thread_port);
+        suspended = false;
+      }
+      if (!state_ok) {
         ++failed_states;
         mach_port_deallocate(mach_task_self(), thread_port);
         continue;
-      }
-      ++thread_states;
-      frame_pcs.clear();
-      if (config.capture_frame_pointers) {
-        walk_frame_pointers(pc, fp, frame_pcs, config.max_frames);
-      } else {
-        frame_pcs.push_back(pc);
       }
       if (frame_pcs.empty()) {
         mach_port_deallocate(mach_task_self(), thread_port);
@@ -310,7 +351,35 @@ MachSamplerStats MachSampler::stats() const {
   out.frames = impl_->frames.load();
   out.failed_states = impl_->failed_states.load();
   out.errors = impl_->errors.load();
+  out.suspended_threads = impl_->suspended_threads.load();
   return out;
 }
+
+#else  // !__APPLE__
+
+struct MachSampler::Impl {};
+
+MachSampler::MachSampler() = default;
+MachSampler::~MachSampler() = default;
+
+Status MachSampler::start(const MachSamplerConfig& config) {
+  if (config.recorder == nullptr) {
+    return Status::error(ErrorCode::InvalidArgument,
+                         "sampler requires a recorder");
+  }
+  if (!config.recorder->is_recording()) {
+    return Status::error(ErrorCode::InvalidArgument,
+                         "start the recorder before the sampler");
+  }
+  return Status::error(
+      ErrorCode::Unsupported,
+      "Mach thread sampling is only available on macOS; use ManualSampler");
+}
+
+void MachSampler::stop() {}
+bool MachSampler::running() const { return false; }
+MachSamplerStats MachSampler::stats() const { return {}; }
+
+#endif  // __APPLE__
 
 }  // namespace gbx

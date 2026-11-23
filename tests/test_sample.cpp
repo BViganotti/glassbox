@@ -29,14 +29,15 @@ extern "C" __attribute__((noinline)) void gbx_symbol_probe() {
   __asm__ __volatile__("" ::: "memory");
 }
 
-namespace {
-
-__attribute__((noinline)) void manual_capture_probe(gbx::ManualSampler& sampler) {
+extern "C" __attribute__((noinline, visibility("default"))) void
+manual_capture_probe(gbx::ManualSampler& sampler) {
   sampler.capture("probe-phase");
   __asm__ __volatile__("" ::: "memory");
 }
 
-__attribute__((noinline)) void busy_work(int iterations) {
+namespace {
+
+[[maybe_unused]] __attribute__((noinline)) void busy_work(int iterations) {
   volatile uint64_t accumulator = 0;
   for (int i = 0; i < iterations; ++i) {
     accumulator = accumulator * 6364136223846793005ull +
@@ -111,6 +112,7 @@ TEST(manual_sampler_records_real_frames) {
   CHECK(saw_probe);
 }
 
+#if defined(__APPLE__)
 TEST(mach_sampler_captures_running_process) {
   const std::string path = temp_path("mach.gbt");
   gbx::Recorder rec;
@@ -135,12 +137,15 @@ TEST(mach_sampler_captures_running_process) {
     CHECK_GT(stats.samples, uint64_t{0});
     CHECK_GT(stats.thread_states, uint64_t{0});
     CHECK_GT(stats.frames, uint64_t{0});
+    CHECK_GT(stats.suspended_threads, uint64_t{0});
   }
   CHECK(rec.finish().ok());
   gbx::Trace trace;
   CHECK(gbx::load_trace(path, trace).ok());
   CHECK_GT(count_samples(trace), size_t{0});
 }
+
+#endif  // __APPLE__
 
 TEST(mach_sampler_requires_recording) {
   gbx::MachSampler sampler;
