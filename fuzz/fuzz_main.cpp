@@ -132,6 +132,27 @@ int fuzz_reader(int iterations) {
       ++rejected;
       continue;
     }
+    if (i % 2 == 0) {
+      // Exercise the streaming, file-backed loader with the same bytes.
+      const std::string mutated_path = temp_path("mutated.gbt");
+      gbx::trace::FileWriter writer;
+      if (!writer.open(mutated_path).ok() || !writer.write(data).ok() ||
+          !writer.close().ok()) {
+        return 1;
+      }
+      gbx::Trace streamed;
+      auto stream_status = gbx::load_trace(mutated_path, streamed, load);
+      if (stream_status.ok()) {
+        if (!trace_invariants(streamed)) {
+          std::fprintf(stderr, "stream reader invariant failure at %d\n", i);
+          return 1;
+        }
+      } else if (stream_status.code() == gbx::ErrorCode::Internal) {
+        std::fprintf(stderr, "stream reader internal failure at %d: %s\n", i,
+                     stream_status.describe().c_str());
+        return 1;
+      }
+    }
     ++accepted;
     if (!trace_invariants(trace)) {
       std::fprintf(stderr, "reader fuzz: invariant failure at iteration %d\n", i);
