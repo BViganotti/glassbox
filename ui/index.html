@@ -2,11 +2,366 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Glassbox</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<main id="app"><h1>Glassbox</h1><p>Time-travel inspector booting.</p></main>
+<header id="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 64 64" width="26" height="26" aria-hidden="true">
+      <rect x="5" y="5" width="54" height="54" rx="12" fill="none" stroke="#5eead4" stroke-width="4"/>
+      <path d="M15 36h10l5-13 6 24 5-11h8" fill="none" stroke="#f5d90a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span>GLASSBOX</span>
+  </div>
+  <div class="trace-title">
+    <span id="trace-name">No trace open</span>
+    <span id="trace-path" class="muted"></span>
+  </div>
+  <div class="top-actions">
+    <span id="live-badge" class="badge live hidden">RECORDING</span>
+    <span id="conn-state" class="badge ok">LOCAL</span>
+    <button id="btn-open" type="button">Open trace</button>
+    <button id="btn-record" type="button" class="primary">Record demo</button>
+    <button id="btn-help" type="button" class="icon" title="Keyboard shortcuts">?</button>
+  </div>
+</header>
+
+<div id="layout">
+  <aside id="sidebar">
+    <nav id="nav" aria-label="Views">
+      <button type="button" data-view="overview" class="active"><span class="dot"></span>Overview<kbd>g o</kbd></button>
+      <button type="button" data-view="flame"><span class="dot"></span>Flame graph<kbd>g f</kbd></button>
+      <button type="button" data-view="heap"><span class="dot"></span>Heap<kbd>g h</kbd></button>
+      <button type="button" data-view="spans"><span class="dot"></span>Spans<kbd>g s</kbd></button>
+      <button type="button" data-view="logs"><span class="dot"></span>Logs<kbd>g l</kbd></button>
+      <button type="button" data-view="state"><span class="dot"></span>State<kbd>g v</kbd></button>
+      <button type="button" data-view="diff"><span class="dot"></span>Diff A/B<kbd>g d</kbd></button>
+      <button type="button" data-view="query"><span class="dot"></span>Query<kbd>/</kbd></button>
+    </nav>
+    <section class="side-panel">
+      <h3>Traces</h3>
+      <ul id="trace-list" class="trace-list"></ul>
+    </section>
+    <section class="side-panel">
+      <h3>Session</h3>
+      <dl id="session-stats" class="kv small"></dl>
+    </section>
+    <div class="side-foot">
+      <span class="muted">Glassbox</span>
+      <span id="version" class="muted"></span>
+    </div>
+  </aside>
+
+  <main id="workspace">
+    <section id="transport" aria-label="Timeline">
+      <div class="transport-head">
+        <div class="readout">
+          <span id="clock" class="clock">0.000 ms</span>
+          <span id="clock-wall" class="muted mono"></span>
+        </div>
+        <div class="transport-actions">
+          <button id="btn-play" type="button" title="Play / pause (space)">▶</button>
+          <button id="btn-back" type="button" title="Step back (←)">−</button>
+          <button id="btn-forward" type="button" title="Step forward (→)">+</button>
+          <button id="btn-zoom-in" type="button" title="Zoom in">⌕+</button>
+          <button id="btn-zoom-out" type="button" title="Zoom out">⌕−</button>
+          <button id="btn-window-reset" type="button" title="Show the whole trace">Fit</button>
+          <span class="marker-set">
+            <button id="btn-set-a" type="button" title="Set A moment ([)">A</button>
+            <button id="btn-set-b" type="button" title="Set B moment (])">B</button>
+          </span>
+          <span id="ab-readout" class="mono muted"></span>
+        </div>
+      </div>
+      <canvas id="timeline" aria-label="Trace timeline canvas"></canvas>
+      <div class="legend">
+        <span><i class="swatch span"></i>span time</span>
+        <span><i class="swatch alloc"></i>alloc bytes</span>
+        <span><i class="swatch error"></i>errors</span>
+        <span><i class="swatch sample"></i>samples</span>
+        <span class="grow"></span>
+        <span class="muted">drag = scrub · shift+drag = zoom window · wheel = zoom</span>
+      </div>
+    </section>
+
+    <div id="views">
+      <section class="view active" id="view-overview">
+        <header class="view-head">
+          <div><h2>Overview</h2><p class="muted">Live heap, activity and heat at the scrub position.</p></div>
+          <div id="overview-actions" class="view-actions">
+            <button type="button" id="btn-jump-heap">Inspect heap at T</button>
+            <button type="button" id="btn-jump-leaks">Leak candidates</button>
+          </div>
+        </header>
+        <div class="cards" id="overview-cards"></div>
+        <div class="grid two">
+          <section class="panel">
+            <header><h3>Counters</h3><span class="muted small">at the scrub position</span></header>
+            <div id="overview-counters" class="charts"></div>
+          </section>
+          <section class="panel">
+            <header><h3>Active spans at T</h3><span id="active-span-count" class="pill"></span></header>
+            <div id="overview-spans" class="stack"></div>
+          </section>
+        </div>
+        <div class="grid two">
+          <section class="panel">
+            <header><h3>Newest logs</h3><a href="#" data-goto="logs" class="link">open log table</a></header>
+            <div id="overview-logs" class="stack compact"></div>
+          </section>
+          <section class="panel">
+            <header><h3>Leak candidates</h3><a href="#" data-goto="heap" class="link">heap view</a></header>
+            <table class="table" id="overview-leaks"><thead><tr><th>site</th><th>class</th><th class="num">bytes</th><th class="num">count</th></tr></thead><tbody></tbody></table>
+          </section>
+        </div>
+        <section class="panel">
+          <header><h3>Event stream near T</h3><span class="muted small">newest first</span></header>
+          <div id="overview-events" class="event-feed"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-flame">
+        <header class="view-head">
+          <div><h2>Flame graph</h2><p class="muted">Stack samples in the selected window; click a frame to zoom.</p></div>
+          <div class="view-actions">
+            <span id="flame-mode-wrap" class="segmented">
+              <button type="button" data-flame-mode="samples" class="active">Samples</button>
+              <button type="button" data-flame-mode="spans">Spans</button>
+            </span>
+            <label class="search"><input id="flame-search" type="search" placeholder="highlight frame…" autocomplete="off"></label>
+          </div>
+        </header>
+        <div class="breadcrumbs" id="flame-breadcrumbs"></div>
+        <div class="flame-wrap">
+          <canvas id="flame-canvas" aria-label="Flame graph canvas"></canvas>
+          <div id="flame-tooltip" class="tooltip hidden"></div>
+        </div>
+        <div class="panel tight">
+          <div id="flame-summary" class="muted small"></div>
+          <div id="flame-detail" class="muted small"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-heap">
+        <header class="view-head">
+          <div><h2>Heap</h2><p class="muted">What was alive at T, attributed by allocation site.</p></div>
+          <div class="view-actions">
+            <label class="inline">at <input id="heap-at" type="range" min="0" max="100" value="100"><span id="heap-at-label" class="mono"></span></label>
+            <button type="button" id="btn-retained">Retained graph</button>
+          </div>
+        </header>
+        <div class="cards" id="heap-cards"></div>
+        <div class="grid heap-grid">
+          <section class="panel">
+            <header><h3>Allocation sites</h3><span id="heap-site-count" class="pill"></span></header>
+            <div class="table-scroll tall">
+              <table class="table selectable" id="heap-sites">
+                <thead><tr><th>site</th><th>class</th><th class="num">live bytes</th><th class="num">count</th><th class="num">age</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="panel">
+            <header><h3>Treemap</h3><span class="muted small">area = live bytes</span></header>
+            <div class="treemap-wrap">
+              <canvas id="heap-treemap" aria-label="Heap treemap"></canvas>
+              <div id="heap-tooltip" class="tooltip hidden"></div>
+            </div>
+            <div id="heap-selected-site" class="muted small"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <header><h3>Objects</h3><span id="heap-object-count" class="pill"></span><span class="muted small">largest first · click for details</span></header>
+          <div class="table-scroll">
+            <table class="table selectable" id="heap-objects">
+              <thead><tr><th>address</th><th class="num">size</th><th>site</th><th>owner</th><th class="num">age</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-spans">
+        <header class="view-head">
+          <div><h2>Spans</h2><p class="muted">Active spans at T and the span tree in the window.</p></div>
+          <div class="view-actions">
+            <label class="inline"><input id="spans-active-only" type="checkbox"> active only</label>
+          </div>
+        </header>
+        <div class="grid two">
+          <section class="panel">
+            <header><h3>Waterfall</h3><span id="spans-count" class="pill"></span></header>
+            <canvas id="spans-canvas" aria-label="Span waterfall"></canvas>
+          </section>
+          <section class="panel">
+            <header><h3>Span tree</h3><span class="muted small">at scrub position</span></header>
+            <div id="spans-tree" class="stack"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <header><h3>Span records</h3><span class="muted small">begun in window, largest first</span></header>
+          <div class="table-scroll">
+            <table class="table selectable" id="spans-table">
+              <thead><tr><th>name</th><th>kind</th><th>thread</th><th class="num">begin</th><th class="num">duration</th><th class="num">depth</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-logs">
+        <header class="view-head">
+          <div><h2>Logs</h2><p class="muted">Bounded, filterable log table for the window.</p></div>
+          <div class="view-actions">
+            <span class="segmented" id="log-levels">
+              <button type="button" data-level="0" class="active">all</button>
+              <button type="button" data-level="1">debug+</button>
+              <button type="button" data-level="2">info+</button>
+              <button type="button" data-level="3">warn+</button>
+              <button type="button" data-level="4">error</button>
+            </span>
+            <label class="search"><input id="log-search" type="search" placeholder="filter text…" autocomplete="off"></label>
+          </div>
+        </header>
+        <div id="logs-summary" class="muted small"></div>
+        <div class="table-scroll tall">
+          <table class="table selectable" id="logs-table">
+            <thead><tr><th class="num">time</th><th>level</th><th>thread</th><th>category</th><th>message</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="view-state">
+        <header class="view-head">
+          <div><h2>State</h2><p class="muted">Merged snapshot state at T, with changes since the previous moment.</p></div>
+          <div class="view-actions">
+            <label class="inline"><input id="state-diff-toggle" type="checkbox"> show A/B diff</label>
+          </div>
+        </header>
+        <div id="state-summary" class="muted small"></div>
+        <div class="table-scroll tall">
+          <table class="table" id="state-table">
+            <thead><tr><th>key</th><th>value</th><th class="num">updated</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="view-diff">
+        <header class="view-head">
+          <div><h2>Diff A/B</h2><p class="muted">Two moments, compared deterministically.</p></div>
+          <div class="view-actions">
+            <span id="diff-moments" class="mono muted"></span>
+            <button type="button" id="btn-diff-swap">swap</button>
+          </div>
+        </header>
+        <div class="cards" id="diff-cards"></div>
+        <div class="grid two">
+          <section class="panel">
+            <header><h3>Heap by site</h3></header>
+            <div class="table-scroll">
+              <table class="table" id="diff-heap"><thead><tr><th>site</th><th>class</th><th class="num">A</th><th class="num">B</th><th class="num">Δ bytes</th><th class="num">Δ count</th></tr></thead><tbody></tbody></table>
+            </div>
+          </section>
+          <section class="panel">
+            <header><h3>Spans by name</h3></header>
+            <div class="table-scroll">
+              <table class="table" id="diff-spans"><thead><tr><th>name</th><th class="num">Δ count</th><th class="num">Δ time</th></tr></thead><tbody></tbody></table>
+            </div>
+          </section>
+        </div>
+        <div class="grid two">
+          <section class="panel">
+            <header><h3>Counters</h3></header>
+            <div class="table-scroll">
+              <table class="table" id="diff-counters"><thead><tr><th>name</th><th class="num">before</th><th class="num">after</th><th class="num">Δ</th></tr></thead><tbody></tbody></table>
+            </div>
+          </section>
+          <section class="panel">
+            <header><h3>State / logs</h3></header>
+            <div id="diff-state" class="stack compact"></div>
+            <div id="diff-logs" class="stack compact"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-query">
+        <header class="view-head">
+          <div><h2>Query</h2><p class="muted">Predicates over records: type, size, site, text, time.</p></div>
+        </header>
+        <form id="query-form" class="query-form">
+          <input id="query-input" type="text" spellcheck="false" autocomplete="off"
+                 placeholder='type:alloc AND size > 1024 AND site ~ "asset"'>
+          <button type="submit" class="primary">Run</button>
+        </form>
+        <div class="query-help muted small">
+          <code>type:log</code>, <code>size&gt;1024</code>, <code>msg~"error"</code>, <code>ts&gt;250ms</code>, <code>thread=2</code>, <code>NOT</code>, <code>AND</code>, <code>OR</code>, parentheses.
+        </div>
+        <div id="query-summary" class="muted small"></div>
+        <div class="table-scroll tall">
+          <table class="table selectable" id="query-table">
+            <thead><tr><th class="num">time</th><th>type</th><th>thread</th><th>fields</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<aside id="inspector" class="drawer hidden" aria-label="Inspector">
+  <header>
+    <h3 id="inspector-title">Inspector</h3>
+    <button type="button" id="inspector-close" class="icon">×</button>
+  </header>
+  <div id="inspector-body" class="stack"></div>
+</aside>
+
+<div id="modal" class="overlay hidden">
+  <div class="modal">
+    <header>
+      <h2 id="modal-title">Open trace</h2>
+      <button type="button" id="modal-close" class="icon">×</button>
+    </header>
+    <div id="modal-body"></div>
+    <footer id="modal-foot"></footer>
+  </div>
+</div>
+
+<div id="help" class="overlay hidden">
+  <div class="modal help">
+    <header><h2>Keyboard &amp; mouse</h2><button type="button" id="help-close" class="icon">×</button></header>
+    <div class="help-grid">
+      <span><kbd>space</kbd></span><span>play / pause</span>
+      <span><kbd>←</kbd> <kbd>→</kbd></span><span>step one frame</span>
+      <span><kbd>shift</kbd> + <kbd>←</kbd>/<kbd>→</kbd></span><span>step ten frames</span>
+      <span><kbd>[</kbd> / <kbd>]</kbd></span><span>set A / B moment</span>
+      <span><kbd>g</kbd> then <kbd>o f h s l v d</kbd></span><span>switch views</span>
+      <span><kbd>/</kbd></span><span>focus the query bar</span>
+      <span><kbd>esc</kbd></span><span>close overlays or reset zoom</span>
+      <span>wheel on timeline</span><span>zoom around the cursor</span>
+      <span>drag timeline</span><span>scrub time</span>
+      <span>shift+drag timeline</span><span>select a window</span>
+    </div>
+    <p class="muted small">Glassbox records your app locally. Nothing leaves this machine; the session token in the URL is required for every request.</p>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<footer id="statusbar">
+  <span id="status-text">starting…</span>
+  <span class="grow"></span>
+  <span id="status-heap" class="mono"></span>
+  <span id="status-records" class="mono"></span>
+  <span id="status-token" class="mono muted" title="session token (masked)"></span>
+</footer>
+
 <script src="/app.js"></script>
 </body>
 </html>
