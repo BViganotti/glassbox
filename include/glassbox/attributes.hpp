@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -65,6 +66,18 @@ struct Value {
   static Value str(uint32_t id) { return {ValueType::String, 0, 0.0, id}; }
   static Value boolean(bool v) {
     return {ValueType::Bool, v ? 1 : 0, 0.0, 0};
+  }
+  /// Encodes a pointer exactly, including addresses with the high bit set.
+  static Value pointer(const void* p) {
+    int64_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(p), "pointer size");
+    std::memcpy(&bits, &p, sizeof(bits));
+    return integer(bits);
+  }
+  /// Returns the raw pointer bits as an unsigned integer.
+  uint64_t pointer_bits() const {
+    uint64_t bits = static_cast<uint64_t>(i);
+    return bits;
   }
 
   double as_double() const {
