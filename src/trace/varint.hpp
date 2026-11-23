@@ -109,6 +109,45 @@ class ByteReader {
     return true;
   }
 
+  /// Reads a fixed-width little-endian 32-bit value.
+  bool u32(uint32_t& out) {
+    if (!ok_ || remaining() < 4) return fail();
+    out = static_cast<uint32_t>(p_[0]) |
+          (static_cast<uint32_t>(p_[1]) << 8) |
+          (static_cast<uint32_t>(p_[2]) << 16) |
+          (static_cast<uint32_t>(p_[3]) << 24);
+    p_ += 4;
+    return true;
+  }
+
+  /// Reads a fixed-width little-endian 64-bit value.
+  bool u64(uint64_t& out) {
+    uint32_t lo = 0;
+    uint32_t hi = 0;
+    if (!u32(lo) || !u32(hi)) return false;
+    out = static_cast<uint64_t>(lo) | (static_cast<uint64_t>(hi) << 32);
+    return true;
+  }
+
+  bool raw(void* dst, size_t size) {
+    if (!ok_ || remaining() < size) return fail();
+    if (size > 0) std::memcpy(dst, p_, size);
+    p_ += size;
+    return true;
+  }
+
+  bool skip(size_t size) {
+    if (!ok_ || remaining() < size) return fail();
+    p_ += size;
+    return true;
+  }
+
+  /// Peeks at the next `size` bytes without consuming them.
+  std::span<const uint8_t> peek(size_t size) const {
+    if (!ok_ || remaining() < size) return {};
+    return {p_, size};
+  }
+
   bool bytes(std::span<uint8_t> out) {
     if (!ok_ || remaining() < out.size()) return fail();
     std::memcpy(out.data(), p_, out.size());

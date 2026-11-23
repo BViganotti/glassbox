@@ -74,6 +74,30 @@ extern unsigned long long checks;
     }                                                                    \
   } while (0)
 
+#define CHECK_GT(a, b)                                                   \
+  do {                                                                   \
+    ++::gbx::test::checks;                                               \
+    auto gbx_a_ = (a);                                                   \
+    auto gbx_b_ = (b);                                                   \
+    if (!(gbx_a_ > gbx_b_)) {                                            \
+      ::gbx::test::fail_value(__FILE__, __LINE__, #a " > " #b, "",       \
+                              ::gbx::test::render(gbx_a_),               \
+                              ::gbx::test::render(gbx_b_));              \
+    }                                                                    \
+  } while (0)
+
+#define CHECK_LT(a, b)                                                   \
+  do {                                                                   \
+    ++::gbx::test::checks;                                               \
+    auto gbx_a_ = (a);                                                   \
+    auto gbx_b_ = (b);                                                   \
+    if (!(gbx_a_ < gbx_b_)) {                                            \
+      ::gbx::test::fail_value(__FILE__, __LINE__, #a " < " #b, "",       \
+                              ::gbx::test::render(gbx_a_),               \
+                              ::gbx::test::render(gbx_b_));              \
+    }                                                                    \
+  } while (0)
+
 #define CHECK_NEAR(a, b, eps)                                            \
   do {                                                                   \
     ++::gbx::test::checks;                                               \
