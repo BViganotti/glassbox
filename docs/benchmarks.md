@@ -43,6 +43,8 @@ A synthetic trace with spans, allocations/frees, logs, samples and counters
 
 Notes:
 
+- Reading now streams chunk-by-chunk from the file, so the loader's peak memory
+  is the decoded model plus one payload (8 MiB max) rather than the whole file.
 - Reading is dominated by validation (CRC, bounds checks, string interning), not
   allocation.
 - Heap reconstruction and diff are O(records) sweeps; they are fast enough for
