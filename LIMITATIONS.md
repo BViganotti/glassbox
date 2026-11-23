@@ -6,11 +6,16 @@ truncation flags are surfaced, and drops are persisted in the trace.
 
 ## Platform
 
-- **macOS only.** The Mach sampler, `posix_spawn` browser launch, `SO_NOSIGPIPE`
-  and `arc4random_buf` are macOS/BSD APIs. There is no Linux or Windows port.
-- Apple Clang/libc++ is the tested toolchain. Other compilers are untested.
+- **macOS and Linux are supported; Windows is not.** macOS is the primary,
+  feature-complete target (including the Mach sampler). Linux is verified by
+  building and running the full suite in an Ubuntu 24.04 container
+  (`tools/linux_test.sh`); it uses manual sampling, `xdg-open`, `MSG_NOSIGNAL`
+  and `getrandom`.
+- Apple Clang/libc++ and GCC 13 are tested. Other compilers are untested.
 - The UI targets desktop browsers with canvas and SSE. Touch works through
   pointer events but is not specifically designed.
+- There is no macOS notarized distribution or Linux package; see
+  [Packaging](#packaging) below.
 
 ## Trace loading and storage
 
@@ -34,13 +39,18 @@ truncation flags are surfaced, and drops are persisted in the trace.
 ## CPU sampling
 
 - The Mach sampler reads program counters and optionally walks frame pointers.
-  It never suspends the target threads while sampling, so a stack can be
-  slightly torn or stale. Reads are done with `mach_vm_read_overwrite` and
-  validated (alignment, monotonic frame pointers, one-megabyte span), so bad
-  frames end the walk rather than crashing.
+  Threads (except the sampler) are briefly suspended around register/stack
+  capture and resumed before symbolization; this yields consistent stacks while
+  avoiding lock inversion with `dladdr`. Sampling remains observational and a
+  suspended thread can still be changing memory in an unusual host.
+- Reads are done with `mach_vm_read_overwrite` on macOS and
+  `process_vm_readv` on Linux, then validated (alignment, monotonic frame
+  pointers, one-megabyte span), so bad frames end the walk rather than crashing.
 - There is no DWARF/line-number resolution. Symbols come from `dladdr`
   (demangled when possible), so stripped binaries show module+offset. Function
-  names can be mangled-looking when the ABI demangler cannot resolve them.
+  names can be mangled-looking when the ABI demangler cannot resolve them. This
+  is the largest remaining sampling gap.
+- Linux has no Mach sampler; use `ManualSampler` or an external collector.
 - Manual samples require frame pointers for more than the immediate caller.
   Optimized code without frame pointers yields shallow stacks. The demo and
   tests are built with the platform default (frame pointers on arm64).
@@ -55,8 +65,8 @@ truncation flags are surfaced, and drops are persisted in the trace.
   while other threads are quiescent. They are incompatible with sanitizer
   allocators and are not linked into the main binary.
 - Hook sites are `dladdr` symbols, not source lines. `sample_every > 1` makes
-  the heap view a sample; frees are only emitted for tracked pointers, so
-  sampled traces do not aim for exact totals.
+  the heap view a sample; `min_size` filters tiny allocations. Frees are only
+  emitted for tracked pointers, so sampled traces do not aim for exact totals.
 - The object registry is bounded (default 100,000 live objects); past that,
   tracking stops and the overflow count is reported.
 - The demo's "leaks" are intentional real allocations freed right after the
@@ -68,10 +78,13 @@ truncation flags are surfaced, and drops are persisted in the trace.
 - Retained size is computed over the ownership edges present in the trace.
   Missing owner information makes objects roots, which can overstate what is
   reachable from the real application roots.
-- Graph analysis is capped (default 20,000 nodes / 100,000 edges). Larger heaps
-  are truncated and the flag is surfaced. If the iterative dominator algorithm
-  does not converge within 1,000 rounds (malformed cycles), `converged=false`
-  is reported and the last safe numbers are returned.
+- Graph analysis is capped per request (UI default 4,000 nodes, API max 50,000,
+  100,000 edges). Larger heaps are truncated and the flag is surfaced. Flame
+  graphs allow up to 100,000 nodes, events 5,000 and heap objects 20,000; the UI
+  requests smaller pages. Caps exist to bound latency/memory and are visible in
+  response metadata. If the iterative dominator algorithm does not converge
+  within 1,000 rounds (malformed cycles), `converged=false` is reported and the
+  last safe numbers are returned.
 - Heap reconstruction is O(records) per query and per diff side. With the
   maximum trace size this can take hundreds of milliseconds; there is no
   incremental heap index or checkpoint cache.
@@ -101,13 +114,17 @@ truncation flags are surfaced, and drops are persisted in the trace.
   notice and lose events. Completed recordings are always loaded from the trace
   file, so gaps do not affect final analysis.
 - Response sizes are capped (32 MiB) and list endpoints have their own limits
-  (events 1,000, objects 5,000, spans 20,000, flame nodes 30,000, logs 500).
-  The UI reports truncation.
+  (events 5,000, heap objects 20,000, spans 20,000, flame nodes 100,000, graph
+  nodes 50,000, logs 1,000). The UI requests smaller pages and reports
+  truncation.
 - The flame canvas draws a fixed height and clips very deep stacks; the summary
   reports depth truncation, and the data itself is capped by the API.
-- Bookmark/state persistence, trace editing, export, and multi-trace comparison
-  are not implemented.
+- Bookmark/state persistence, trace editing and multi-trace comparison are not
+  implemented. A single moment (heap/state/spans/leaks) can be exported as JSON.
 - The UI uses self-hosted assets only; no themes, plugins or localization.
+- Browser automation is a smoke suite (`tools/ui_smoke.sh`) covering every view,
+  deep-linked queries, the quit endpoint and rendering. It does not click every
+  button; API tests cover the corresponding routes.
 
 ## Query
 
@@ -119,10 +136,19 @@ truncation flags are surfaced, and drops are persisted in the trace.
 - Fields compare only against their stored type: a string value will not equal
   a numeric literal even if it looks numeric.
 
+## Packaging
+
+- A local macOS app bundle can be produced (`make bundle`) and is ad-hoc signed
+  by default. Developer ID signing/notarization, stapling, auto-updates, a
+  universal binary and Linux packages are not provided.
+- Windows packaging is out of scope. The app opens the browser via `open` /
+  `xdg-open`; headless environments need `--no-browser`.
+
 ## Build, CI and delivery
 
 - There is intentionally no CI/CD configuration. Verification is local
-  (`ctest`, sanitizer builds, fuzzers, benchmarks).
+  (`tools/release_check.sh`, sanitizer builds, fuzzers, benchmarks, UI smoke,
+  Linux container test).
 - The build requires CMake and Ninja; no Makefile-only or IDE project files are
   generated.
 - Assets are re-embedded at CMake configure time; editing `ui/*` triggers a
