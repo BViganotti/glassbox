@@ -332,7 +332,11 @@ Status load_impl(std::span<const uint8_t> bytes, Trace& out,
     info.record_count = decoded_records;
     if (first_record < out.records.size()) {
       info.first_ts = out.records[first_record].ts;
-      info.last_ts = out.records.back().ts;
+      info.last_ts = info.first_ts;
+      for (size_t i = first_record; i < out.records.size(); ++i) {
+        info.first_ts = std::min(info.first_ts, out.records[i].ts);
+        info.last_ts = std::max(info.last_ts, out.records[i].ts);
+      }
     }
     out.chunks.push_back(info);
   }
@@ -348,6 +352,9 @@ Status load_impl(std::span<const uint8_t> bytes, Trace& out,
     if (footer_chunks != out.chunks.size() ||
         footer_records != out.records.size()) {
       return corrupt("footer does not match decoded content");
+    }
+    if (!out.records.empty() && footer_duration < out.records.back().ts) {
+      return corrupt("footer duration precedes the last record");
     }
   }
   out.meta.recorded_ns =
