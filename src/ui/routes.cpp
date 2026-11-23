@@ -870,6 +870,114 @@ void register_trace_routes(HttpServer& server, TraceGetter getter,
     response.set_body(writer.str());
   });
 
+  add("/api/export", [get, getter](const HttpRequest& request,
+                                      HttpResponse& response) {
+    auto trace = get(request, response);
+    if (!trace) return;
+    const uint64_t at = param_at(request, *trace);
+    const size_t limit = static_cast<size_t>(
+        parse_u64(request.query_value("limit"), 500, 5000));
+    HeapOptions heap_options;
+    heap_options.max_objects = limit;
+    heap_options.max_sites = 256;
+    const HeapAt heap = heap_at(*trace, at, heap_options);
+    const auto state = state_at(*trace, at);
+    const auto spans = active_spans(*trace, at);
+    const auto leaks = leak_candidates(*trace, 100);
+    const TraceSnapshot snapshot = getter();
+    json::Writer writer;
+    writer.begin_object();
+    writer.key_string("format", "glassbox-moment-1");
+    writer.key_string("glassbox_version", GBX_VERSION);
+    writer.key_integer("at", static_cast<int64_t>(at));
+    writer.key_integer("wall_ns",
+                       static_cast<int64_t>(trace->meta.wall_start_ns + at));
+    writer.key_integer("duration_ns", static_cast<int64_t>(trace->end_ts()));
+    writer.key_string("trace_name", snapshot.name);
+    writer.key_string("trace_path", snapshot.path);
+    writer.key_string("app", trace->meta.app_name);
+    writer.key_string("arch", trace->meta.arch);
+    writer.key("heap");
+    writer.begin_object();
+    writer.key_integer("total_bytes", static_cast<int64_t>(heap.total_bytes));
+    writer.key_integer("object_count", static_cast<int64_t>(heap.object_count));
+    writer.key_integer("peak_bytes", static_cast<int64_t>(heap.peak_bytes));
+    writer.key_integer("alloc_count", static_cast<int64_t>(heap.alloc_count));
+    writer.key_integer("free_count", static_cast<int64_t>(heap.free_count));
+    writer.key("sites");
+    writer.begin_array();
+    for (const auto& site : heap.sites) {
+      writer.begin_object();
+      writer.key_string("site", site.site);
+      writer.key_string("class", site.klass);
+      writer.key_integer("live_bytes", static_cast<int64_t>(site.live_bytes));
+      writer.key_integer("live_count", static_cast<int64_t>(site.live_count));
+      writer.key_number("avg_age_ns", site.average_age_ns);
+      writer.end_object();
+    }
+    writer.end_array();
+    writer.key("objects");
+    writer.begin_array();
+    for (const auto& object : heap.objects) {
+      writer.begin_object();
+      writer.key_string("ptr", hex_pointer(object.ptr));
+      writer.key_integer("size", static_cast<int64_t>(object.size));
+      writer.key_string("owner", hex_pointer(object.owner));
+      writer.key_integer("alloc_ts", static_cast<int64_t>(object.alloc_ts));
+      writer.key_integer("age_ns", static_cast<int64_t>(object.age_ns));
+      writer.key_string("site", object.site);
+      writer.key_string("class", object.klass);
+      writer.end_object();
+    }
+    writer.end_array();
+    writer.end_object();
+    writer.key("state");
+    writer.begin_array();
+    for (const auto& entry : state) {
+      writer.begin_object();
+      writer.key_string("key", entry.key);
+      if (entry.type == ValueType::String) {
+        writer.key_string("text", entry.text);
+      } else {
+        writer.key_number("number", entry.number);
+      }
+      writer.key_integer("ts", static_cast<int64_t>(entry.ts));
+      writer.end_object();
+    }
+    writer.end_array();
+    writer.key("active_spans");
+    writer.begin_array();
+    for (const auto& span : spans) {
+      writer.begin_object();
+      writer.key_integer("id", static_cast<int64_t>(span.id));
+      writer.key_integer("parent", static_cast<int64_t>(span.parent));
+      writer.key_integer("thread", static_cast<int64_t>(span.thread));
+      writer.key_string("name", span.name);
+      writer.key_string("kind", span.kind);
+      writer.key_integer("begin_ts", static_cast<int64_t>(span.begin_ts));
+      writer.end_object();
+    }
+    writer.end_array();
+    writer.key("leaks");
+    writer.begin_array();
+    for (const auto& leak : leaks) {
+      writer.begin_object();
+      writer.key_string("site", leak.site);
+      writer.key_string("class", leak.klass);
+      writer.key_integer("bytes", static_cast<int64_t>(leak.bytes));
+      writer.key_integer("count", static_cast<int64_t>(leak.count));
+      writer.key_number("score", leak.score);
+      writer.end_object();
+    }
+    writer.end_array();
+    writer.end_object();
+    response.set_body(writer.str());
+        response.content_type = "application/json; charset=utf-8";
+    response.headers.emplace_back(
+        "Content-Disposition",
+        "attachment; filename=\"glassbox-moment.json\"");
+  });
+
   add("/api/diff", [get](const HttpRequest& request,
                          HttpResponse& response) {
     auto trace = get(request, response);

@@ -1932,6 +1932,22 @@
 
     $('#btn-jump-heap').addEventListener('click', () => switchView('heap'));
     $('#btn-jump-leaks').addEventListener('click', () => { switchView('heap'); state.selectedSite = ''; setTimeout(() => toast('Leak candidates are on the overview card and in the heap view.'), 50); });
+    $('#btn-export').addEventListener('click', guarded(async () => {
+      const response = await fetch('/api/export?at=' + encodeURIComponent(state.at) +
+        '&limit=500', { headers: { 'X-Glassbox-Token': state.token } });
+      if (!response.ok) throw new Error('export failed: HTTP ' + response.status);
+      const text = await response.text();
+      const blob = new Blob([text], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'glassbox-' + (state.meta?.name?.replace(/\.gbt$/, '') || 'moment') +
+        '-' + Math.round(state.at) + 'ns.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+      toast('exported moment at ' + fmtTime(state.at));
+    }));
     $('#btn-retained').addEventListener('click', guarded(async () => {
       state.heapGraphMode = !state.heapGraphMode;
       $('#btn-retained').textContent = state.heapGraphMode ? 'Retained: on' : 'Retained graph';
