@@ -219,6 +219,32 @@ TEST(workbench_opens_trace_and_serves_analysis) {
                                      token);
   CHECK_EQ(response.status, 404);
 
+  response = gbx::test::http_request(
+      port, "GET", "/api/state/history?key=inventory_count", {}, token);
+  CHECK_EQ(response.status, 200);
+  auto history = parse(response.body);
+  CHECK(history.find("points")->array.size() > 0);
+  CHECK_EQ(history.find("points")->array[0].find("type")->as_string(),
+           std::string("number"));
+  response = gbx::test::http_request(port, "GET", "/api/state/history", {},
+                                     token);
+  CHECK_EQ(response.status, 400);
+
+  response = gbx::test::http_request(port, "GET", "/api/export", {}, token);
+  CHECK_EQ(response.status, 200);
+  auto exported = parse(response.body);
+  CHECK_EQ(exported.find("format")->as_string(),
+           std::string("glassbox-moment-1"));
+  CHECK(exported.find("heap")->find("total_bytes")->as_number() > 0);
+  CHECK(exported.find("active_spans")->is_array());
+  CHECK(exported.find("state")->is_array());
+  CHECK(response.header("content-disposition").find("attachment") !=
+        std::string::npos);
+
+  response = gbx::test::http_request(port, "HEAD", "/api/health", {}, token);
+  CHECK_EQ(response.status, 200);
+  CHECK(response.body.empty());
+
   workbench.stop();
 }
 
