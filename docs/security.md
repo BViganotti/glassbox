@@ -15,7 +15,8 @@ web pages that did not start it.
 
 1. **Network**: the server binds `127.0.0.1` only. Binding any other address is
    rejected by `HttpServer::listen`. There is no outbound network access at
-   runtime and no remote APIs.
+   runtime and no remote APIs. Browser launch invokes only the platform opener
+   (`open` or `xdg-open`) with the loopback URL.
 2. **Browser**: the UI is served from the same loopback origin; all assets are
    embedded. The CSP forbids external scripts, styles, fonts, frames and forms.
 3. **Filesystem**: the UI can only list/open regular `.gbt` files under the
