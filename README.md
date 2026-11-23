@@ -39,7 +39,7 @@ fonts or assets, and no network access at runtime.
 
 ## Build
 
-Requires macOS, Apple Clang with C++20, CMake 3.20+ and Ninja.
+Requires macOS or Linux, a C++20 compiler (Apple Clang or GCC/Clang), CMake 3.20+ and Ninja. macOS additionally supports Mach thread sampling; Linux uses manual sampling and `xdg-open`.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -48,6 +48,10 @@ ctest --test-dir build --output-on-failure
 ```
 
 Or `make build test`, or `cmake --preset release && cmake --build --preset release`.
+
+Verify Linux in a container with `make linux-test` (Docker + Ubuntu 24.04), and
+build a local macOS app bundle with `make bundle` (see
+[docs/packaging.md](docs/packaging.md)).
 
 ## Run
 
@@ -128,7 +132,9 @@ make asan   # address+undefined
 make tsan   # thread sanitizer
 ```
 
-Details: [docs/testing.md](docs/testing.md).
+UI rendering is smoke-tested headlessly with `make smoke`; the full local
+release gate is `make verify`. Details: [docs/testing.md](docs/testing.md) and
+[docs/portability.md](docs/portability.md).
 
 ## Constraints and non-goals
 
@@ -145,6 +151,8 @@ limits. See [LIMITATIONS.md](LIMITATIONS.md) for the honest list of gaps.
 - [Query language](docs/query.md)
 - [Workbench](docs/workbench.md)
 - [Testing](docs/testing.md)
+- [Portability](docs/portability.md)
+- [Packaging](docs/packaging.md)
 - [Changelog](CHANGELOG.md)
 - [Limitations](LIMITATIONS.md)
 
