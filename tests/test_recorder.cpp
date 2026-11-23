@@ -291,3 +291,57 @@ TEST(recorder_start_requires_unique_use) {
   CHECK(second.code() == gbx::ErrorCode::Busy);
   CHECK(rec.finish().ok());
 }
+
+TEST(recorder_splits_large_snapshots) {
+  const std::string path = temp_path("snapshot-split.gbt");
+  gbx::Recorder rec;
+  CHECK(rec.start(path).ok());
+  // Snapshot calls with more than 24 fields are split by the recorder. Verify
+  // that the split records still carry every key at the trace level.
+  rec.snapshot({{"a1", 1}, {"a2", 2}, {"a3", 3}, {"a4", 4}, {"a5", 5},
+                {"a6", 6}, {"a7", 7}, {"a8", 8}, {"a9", 9}, {"a10", 10},
+                {"a11", 11}, {"a12", 12}, {"a13", 13}, {"a14", 14},
+                {"a15", 15}, {"a16", 16}, {"a17", 17}, {"a18", 18},
+                {"a19", 19}, {"a20", 20}, {"a21", 21}, {"a22", 22},
+                {"a23", 23}, {"a24", 24}, {"a25", 25}, {"a26", 26}});
+  rec.snapshot({{"b1", 1}, {"b2", 2}, {"b3", 3}, {"b4", 4}});
+  CHECK(rec.finish().ok());
+  gbx::Trace trace;
+  CHECK(gbx::load_trace(path, trace).ok());
+  size_t snapshot_records = 0;
+  size_t snapshot_fields = 0;
+  for (const auto& record : trace.records) {
+    if (record.type == gbx::RecordType::Snapshot) {
+      ++snapshot_records;
+      snapshot_fields += record.field_count;
+    }
+  }
+  CHECK_EQ(snapshot_records, size_t{3});  // 24 + 2 + 4
+  CHECK_EQ(snapshot_fields, size_t{30});
+}
+
+TEST(recorder_truncates_oversized_sample_stacks) {
+  const std::string path = temp_path("sample-truncate.gbt");
+  gbx::Recorder rec;
+  CHECK(rec.start(path).ok());
+  std::vector<std::string> frames;
+  for (int i = 0; i < 100; ++i) {
+    frames.push_back("frame-" + std::to_string(i));
+  }
+  std::vector<std::string_view> views;
+  for (const auto& frame : frames) views.push_back(frame);
+  rec.sample(views);
+  CHECK(rec.finish().ok());
+  gbx::Trace trace;
+  CHECK(gbx::load_trace(path, trace).ok());
+  const gbx::Record* sample = find_type(trace, gbx::RecordType::Sample);
+  CHECK(sample != nullptr);
+  if (sample) {
+    const auto text = trace.str_field(*sample, "frames");
+    size_t count = 1;
+    for (char c : text) if (c == gbx::kFrameSeparator) ++count;
+    CHECK_LE(count, size_t{64});
+    CHECK(trace.field(*sample, "truncated") != nullptr);
+    CHECK(trace.field(*sample, "truncated")->as_bool());
+  }
+}
