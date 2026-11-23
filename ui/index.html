@@ -78,6 +78,7 @@
         </div>
       </div>
       <canvas id="timeline" aria-label="Trace timeline canvas"></canvas>
+      <div id="timeline-tooltip" class="tooltip hidden"></div>
       <div class="legend">
         <span><i class="swatch span"></i>span time</span>
         <span><i class="swatch alloc"></i>alloc bytes</span>
@@ -197,6 +198,7 @@
           <section class="panel">
             <header><h3>Waterfall</h3><span id="spans-count" class="pill"></span></header>
             <canvas id="spans-canvas" aria-label="Span waterfall"></canvas>
+            <div id="spans-tooltip" class="tooltip hidden"></div>
           </section>
           <section class="panel">
             <header><h3>Span tree</h3><span class="muted small">at scrub position</span></header>

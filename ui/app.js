@@ -411,6 +411,25 @@
     ctx.arc(xAt, 3, 3, 0, Math.PI * 2);
     ctx.fill();
 
+    // Markers recorded by the application.
+    if (state.meta && Array.isArray(state.meta.markers)) {
+      for (const marker of state.meta.markers) {
+        if (marker.ts < tl.begin || marker.ts > tl.end) continue;
+        const x = xOf(marker.ts);
+        ctx.strokeStyle = '#f5d90a55';
+        ctx.setLineDash([2, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, 0); ctx.lineTo(x, spanH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#f5d90a';
+        ctx.beginPath();
+        ctx.moveTo(x - 4, 0); ctx.lineTo(x + 4, 0); ctx.lineTo(x, 7);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
     if (state.drag && state.drag.shift) {
       const x0 = state.drag.x0;
       const x1 = state.drag.x1 === undefined ? x0 : state.drag.x1;
@@ -1138,6 +1157,15 @@
     drawSpansCanvas();
   }
 
+  function showTooltip(node, event, title, lines) {
+    node.textContent = '';
+    node.appendChild(el('div', 'mono', title));
+    for (const line of lines) node.appendChild(el('div', '', line));
+    node.style.left = Math.min(window.innerWidth - 320, event.clientX + 14) + 'px';
+    node.style.top = Math.min(window.innerHeight - 90, event.clientY + 14) + 'px';
+    node.classList.remove('hidden');
+  }
+
   function drawSpansCanvas() {
     const canvas = $('#spans-canvas');
     const fitted = fitCanvas(canvas);
@@ -1169,6 +1197,7 @@
       ctx.fillText(truncate(ctx, threadLabel(thread), 86), 4, laneY + 12);
     });
     const limit = 900;
+    state.spanRects = [];
     tree.spans.slice(0, limit).forEach((record) => {
       const lane = threads.indexOf(record.thread);
       if (lane < 0) return;
@@ -1185,6 +1214,13 @@
         ctx.font = '9px ui-monospace, monospace';
         ctx.fillText(truncate(ctx, record.name, x1 - x0 - 6), x0 + 3, y + Math.max(7, laneHeight - 14 - depth * 3));
       }
+      state.spanRects.push({
+        x: x0,
+        y,
+        w: Math.max(1, x1 - x0),
+        h: Math.max(6, laneHeight - 12 - depth * 3),
+        span: record,
+      });
     });
     ctx.fillStyle = '#66788c';
     for (let i = 0; i <= 4; i++) {
@@ -1977,6 +2013,54 @@
     $('#heap-treemap').addEventListener('click', heapTreemapClick);
 
     $('#spans-active-only').addEventListener('change', () => { if (state.view === 'spans') renderSpans(); });
+    const spansCanvas = $('#spans-canvas');
+    spansCanvas.addEventListener('mousemove', (event) => {
+      if (!state.spanRects) return;
+      const rect = spansCanvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const hit = state.spanRects.find((candidate) => x >= candidate.x && x <= candidate.x + candidate.w && y >= candidate.y && y <= candidate.y + candidate.h);
+      const tooltip = $('#spans-tooltip');
+      if (!hit) { tooltip.classList.add('hidden'); return; }
+      const span = hit.span;
+      showTooltip(tooltip, event, span.name,
+        [`${threadLabel(span.thread)} · ${span.closed ? fmtTime(span.end_ts - span.begin_ts) : 'open'}`,
+         `begin ${fmtTime(span.begin_ts)} · depth ${span.depth}`]);
+    });
+    spansCanvas.addEventListener('mouseleave', () => $('#spans-tooltip').classList.add('hidden'));
+    spansCanvas.addEventListener('click', (event) => {
+      if (!state.spanRects) return;
+      const rect = spansCanvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const hit = state.spanRects.find((candidate) => x >= candidate.x && x <= candidate.x + candidate.w && y >= candidate.y && y <= candidate.y + candidate.h);
+      if (hit) openSpan(hit.span.id);
+    });
+    const timelineCanvas = $('#timeline');
+    timelineCanvas.addEventListener('mousemove', (event) => {
+      if (state.drag) return;
+      const tl = state.timeline;
+      if (!tl) return;
+      const rect = timelineCanvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const ratio = clamp(x / Math.max(1, rect.width), 0, 1);
+      const ts = Math.round(tl.begin + ratio * Math.max(1, tl.end - tl.begin));
+      const buckets = tl.buckets || [];
+      if (!buckets.length) return;
+      const bucket = buckets[Math.min(buckets.length - 1, Math.floor(ratio * buckets.length))];
+      const lines = [
+        `${fmtTime(ts)} · ${wallClock(ts)}`,
+        `span ${fmtTime(bucket.span_ns)} · alloc ${fmtBytes(bucket.alloc_bytes)}`,
+        `${fmtNum(bucket.log_count)} logs · ${fmtNum(bucket.error_count)} errors · ${fmtNum(bucket.sample_count)} samples`,
+      ];
+      const markers = (state.meta?.markers || []).filter((marker) =>
+        Math.abs(marker.ts - ts) <= Math.max(1000, (tl.end - tl.begin) / 60));
+      if (markers.length) lines.push('marker: ' + markers[0].label);
+      showTooltip($('#timeline-tooltip'), event, 'timeline', lines);
+      if (y > rect.height - 4) timelineCanvas.style.cursor = 'crosshair';
+    });
+    timelineCanvas.addEventListener('mouseleave', () => $('#timeline-tooltip').classList.add('hidden'));
 
     $$('#log-levels button').forEach((button) => button.addEventListener('click', () => {
       state.logLevel = Number(button.dataset.level);
