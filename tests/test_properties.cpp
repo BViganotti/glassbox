@@ -170,3 +170,43 @@ TEST(property_state_history_is_monotonic_and_stable) {
     CHECK_NEAR(first[i].number, second[i].number, 1e-9);
   }
 }
+
+TEST(property_heap_graph_retained_covers_total) {
+  for (uint32_t seed = 1; seed <= 8; ++seed) {
+    gbx::test::AnalysisFixture f;
+    uint32_t state = seed * 2654435761u;
+    auto next = [&state] {
+      state ^= state << 13;
+      state ^= state >> 17;
+      state ^= state << 5;
+      return state;
+    };
+    const uint64_t base = 0x100000 + static_cast<uint64_t>(seed) * 0x10000;
+    uint64_t total = 0;
+    for (int i = 0; i < 40; ++i) {
+      const uint64_t ptr = base + static_cast<uint64_t>(i) * 64;
+      const uint64_t size = 8 + (next() % 128);
+      // Random owners produce both trees and cycles; self-owners are skipped.
+      uint64_t owner = 0;
+      if (i > 0 && (next() % 4) != 0) {
+        owner = base + static_cast<uint64_t>(next() % static_cast<uint32_t>(i)) * 64;
+      }
+      f.alloc(static_cast<uint64_t>(i), ptr, size, "graph.cpp:1", "Node", owner);
+      const bool self_owner = owner == ptr;
+      if (!self_owner) total += size;
+    }
+    f.finalize();
+    const auto graph = gbx::build_heap_graph(f.trace, f.trace.end_ts());
+    CHECK(graph.converged);
+    CHECK(!graph.nodes.empty());
+    uint64_t retained_total = 0;
+    for (const auto& node : graph.nodes) {
+      CHECK(node.retained >= node.size);
+      if (node.idom < 0) retained_total += node.retained;
+    }
+    CHECK_EQ(retained_total, graph.total_bytes);
+    CHECK_EQ(graph.total_bytes, total);
+    const size_t ordinals = gbx::live_allocations(f.trace, f.trace.end_ts()).size();
+    CHECK_EQ(graph.nodes.size(), ordinals);
+  }
+}
