@@ -60,12 +60,36 @@ Status Trace::add_record(Record record, std::span<const Field> record_fields) {
   if (record_fields.size() > 0xffff) {
     return Status::error(ErrorCode::LimitExceeded, "record field count overflow");
   }
-  const size_t projected = estimated_memory() + sizeof(Record) +
-                           record_fields.size() * sizeof(Field);
+  // Predict the vector capacity growth before allocating, then reserve the
+  // exact capacity so the budget reflects real allocations rather than a
+  // best-case size estimate.
+  const size_t record_need = records.size() + 1;
+  size_t record_capacity = records.capacity();
+  while (record_capacity < record_need) {
+    record_capacity = record_capacity == 0 ? 8 : record_capacity * 2;
+    if (record_capacity < record_need && record_capacity > (1ull << 40)) {
+      return Status::error(ErrorCode::LimitExceeded,
+                           "record capacity overflow");
+    }
+  }
+  const size_t field_need = fields.size() + record_fields.size();
+  size_t field_capacity = fields.capacity();
+  while (field_capacity < field_need) {
+    field_capacity = field_capacity == 0 ? 16 : field_capacity * 2;
+    if (field_capacity < field_need && field_capacity > (1ull << 40)) {
+      return Status::error(ErrorCode::LimitExceeded,
+                           "field capacity overflow");
+    }
+  }
+  const size_t projected =
+      sizeof(Trace) + chunks.capacity() * sizeof(ChunkInfo) + strings.bytes() +
+      record_capacity * sizeof(Record) + field_capacity * sizeof(Field);
   if (projected > limits_.max_memory_bytes) {
     return Status::error(ErrorCode::LimitExceeded,
                          "decoded trace memory budget exceeded");
   }
+  if (records.capacity() < record_capacity) records.reserve(record_capacity);
+  if (fields.capacity() < field_capacity) fields.reserve(field_capacity);
   record.first_field = static_cast<uint32_t>(fields.size());
   record.field_count = static_cast<uint16_t>(record_fields.size());
   fields.insert(fields.end(), record_fields.begin(), record_fields.end());
