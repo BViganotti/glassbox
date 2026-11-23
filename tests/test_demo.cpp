@@ -147,3 +147,34 @@ TEST(demo_requires_started_recorder) {
   CHECK(!status.ok());
   CHECK(status.code() == gbx::ErrorCode::InvalidArgument);
 }
+
+TEST(demo_seed_varies_allocation_sizes) {
+  const auto base = fast_options();
+  gbx::DemoOptions one = base;
+  one.seed = 1;
+  gbx::DemoOptions two = base;
+  two.seed = 2;
+  const std::string path_a = temp_path("seed-a.gbt");
+  const std::string path_b = temp_path("seed-b.gbt");
+  CHECK(gbx::record_demo_trace(path_a, one).status.ok());
+  CHECK(gbx::record_demo_trace(path_b, two).status.ok());
+  gbx::Trace a;
+  gbx::Trace b;
+  CHECK(gbx::load_trace(path_a, a).ok());
+  CHECK(gbx::load_trace(path_b, b).ok());
+  uint64_t sum_a = 0;
+  uint64_t sum_b = 0;
+  for (const auto& record : a.records) {
+    if (record.type == gbx::RecordType::Alloc) {
+      sum_a += static_cast<uint64_t>(a.int_field(record, "size"));
+    }
+  }
+  for (const auto& record : b.records) {
+    if (record.type == gbx::RecordType::Alloc) {
+      sum_b += static_cast<uint64_t>(b.int_field(record, "size"));
+    }
+  }
+  CHECK_NE(sum_a, sum_b);
+  CHECK_EQ(count_type(a, gbx::RecordType::Alloc),
+           count_type(b, gbx::RecordType::Alloc));
+}
