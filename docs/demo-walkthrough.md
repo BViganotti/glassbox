@@ -70,7 +70,14 @@ Set A to the start (`[` after scrubbing to 0, or the A button) and B to the end
 The state table (State → "show A/B diff") shows the same change with before and
 after values.
 
-## 6. Query records
+## 6. Inspect object and state history
+
+Click a heap object to see its address, size, owner and originating allocation
+record. Click a state row (for example `inventory_count`) to open its history:
+a sparkline and the list of updates. Use **Export JSON** in the heap view to
+download the moment bundle (heap, state, active spans, leaks).
+
+## 7. Query records
 
 Press `/` and try:
 
@@ -81,9 +88,10 @@ msg ~ "inventory" AND ts > 60ms
 ```
 
 The result table is clickable; each record opens in the inspector with all
-fields and the raw JSON.
+fields and the raw JSON. Queries can be shared with a deep link: add
+`?q=type%3Aalloc&at=0.02#query` to the workbench URL.
 
-## 7. Record a live run
+## 8. Record a live run
 
 Click **Record demo**. The UI opens an SSE stream, shows a recording badge with
 the event count, and reloads the trace when the run finishes. Use the form to
@@ -96,4 +104,5 @@ for a faster run.
 - `[` / `]` set A/B
 - `g` `o|f|h|s|l|v|d` switch views
 - `/` query, `Esc` close overlays
+- the power button in the header stops the server (the trace stays on disk)
 - wheel zooms the timeline around the cursor; shift+drag selects a window
