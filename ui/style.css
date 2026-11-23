@@ -1,0 +1,4 @@
+/* Glassbox workbench styles (placeholder). */
+:root { color-scheme: dark; }
+body { margin: 0; background: #0b0e13; color: #d8dee9; font: 14px system-ui, sans-serif; }
+main { padding: 24px; }
