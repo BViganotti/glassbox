@@ -37,7 +37,7 @@ extern char** environ;
 namespace gbx {
 namespace {
 
-constexpr size_t kMaxTraceBytes = 512u << 20;
+constexpr size_t kMaxTraceBytes = 2ull << 30;
 
 uint64_t now_ms() {
   return static_cast<uint64_t>(

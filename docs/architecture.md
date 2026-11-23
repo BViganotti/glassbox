@@ -48,7 +48,7 @@ application ── > Recorder (producer threads)
                    HTTP JSON routes ──> workbench UI (canvas/DOM)
 ```
 
-The file is the source of truth. The UI never holds mutable analysis state;
+The file is the source of truth and is streamed chunk-by-chunk by the loader. The UI never holds mutable analysis state;
 every endpoint reconstructs its view from the immutable `Trace` snapshot under
 a mutex-held `shared_ptr`. Opening a new trace swaps the pointer atomically from
 the reader's perspective.

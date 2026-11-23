@@ -74,7 +74,8 @@ third-party dependencies). Modes:
 ./build/fuzz/glassbox_fuzz roundtrip 500   # writer/reader property test
 ```
 
-The reader mode accepts malformed input only through `Status`, then validates
+The reader mode accepts malformed input only through `Status` (through both the
+in-memory and streaming file loaders), then validates
 invariants on accepted traces (sorted records, field bounds, string ids) and
 runs every analysis pass on them. HTTP mode checks that the server still
 answers a valid request after a stream of malformed ones.

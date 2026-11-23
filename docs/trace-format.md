@@ -124,12 +124,13 @@ need not be contiguous after filtering.
 
 | Limit | Value |
 |---|---:|
-| File size accepted by the reader | 512 MiB |
-| Records per trace | 2,000,000 |
-| Fields per trace | 8,000,000 |
+| File size accepted by the reader | 2 GiB |
+| Decoded in-memory budget | 1 GiB (configurable) |
+| Records per trace | 8,000,000 |
+| Fields per trace | 32,000,000 |
 | Fields per record | 64 |
-| Strings per trace | 262,144 |
-| String bytes per trace | 32 MiB |
+| Strings per trace | 524,288 |
+| String bytes per trace | 128 MiB |
 | String length | 64 KiB |
 | Chunk payload | 8 MiB |
 | Chunks per trace | 65,536 |
@@ -161,9 +162,11 @@ tooling.
 Chunks are bounded in size, so callers can index them without loading the whole
 file. The in-memory `Trace` records each chunk's file offset and timestamp
 range in `Trace::chunks`, and `Trace::record_range(begin, end)` performs binary
-searches over the sorted record array. The reader itself currently loads the
-whole file (bounded by `max_file_bytes`) because the analysis views need the
-full record set.
+searches over the sorted record array. `load_trace` streams chunks from disk: only one payload (at most 8 MiB) is held
+in addition to the decoded model. The decoded model itself is bounded by
+`TraceLimits::max_memory_bytes` (1 GiB by default), so a large file fails
+cleanly with `LimitExceeded` instead of risking the process. `load_trace_bytes`
+remains available for in-memory/fuzzing use.
 
 ## Golden corpus
 

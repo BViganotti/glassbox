@@ -14,12 +14,15 @@ truncation flags are surfaced, and drops are persisted in the trace.
 
 ## Trace loading and storage
 
-- The reader loads the whole file into memory (up to 512 MiB) and builds a
-  flat in-memory record array. There is no mmap, compression or on-disk query
-  engine. Very large traces are bounded but memory-hungry (~48 MiB of analysis
-  trace for 210k dense records in the benchmark).
-- The reader limit is 2,000,000 records and 8,000,000 fields. Beyond that the
-  trace is rejected with `LimitExceeded`; it is not silently truncated.
+- The reader streams chunks (peak memory is the decoded model plus one 8 MiB
+  payload) but still builds a flat in-memory record array for analysis. There
+  is no mmap, compression or on-disk query engine. Very large traces are
+  bounded but memory-hungry (~48 MiB of analysis trace for 210k dense records
+  in the benchmark).
+- The file limit is 2 GiB, the decoded-memory budget is 1 GiB by default, and
+  the record/field caps are 8,000,000/32,000,000. Beyond those the trace is
+  rejected with `LimitExceeded`; it is not silently truncated. A 2 GiB trace
+  that decodes past the memory budget cannot be inspected in full.
 - Chunk decoding requires reasonable compression of repeated keys; strings are
   deduplicated per chunk, not globally, so a pathological writer can spend more
   space.
