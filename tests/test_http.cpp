@@ -292,3 +292,53 @@ TEST(http_server_bad_requests_do_not_crash) {
   server.request_stop();
   thread.join();
 }
+
+TEST(http_server_rejects_excess_params_and_long_targets) {
+  gbx::ui::HttpServer server;
+  CHECK(server.listen("127.0.0.1", 0).ok());
+  server.route("GET", "/ok", [](const gbx::ui::HttpRequest&,
+                                gbx::ui::HttpResponse& response) {
+    response.set_body("{}");
+  });
+  std::thread thread([&server] { server.serve(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+  std::string path = "/ok?";
+  for (int i = 0; i < 40; ++i) path += "k" + std::to_string(i) + "=v&";
+  auto response = exchange(server.port(), make_request("GET", path));
+  CHECK_MSG(has_status(response, 400), response.substr(0, 80));
+
+  const std::string long_path = "/" + std::string(5000, 'a');
+  response = exchange(server.port(), make_request("GET", long_path));
+  CHECK_MSG(has_status(response, 400), response.substr(0, 80));
+
+  server.request_stop();
+  thread.join();
+}
+
+TEST(http_server_connection_cap_returns_503) {
+  gbx::ui::HttpLimits limits;
+  limits.max_connections = 1;
+  limits.io_timeout_ms = 700;
+  gbx::ui::HttpServer server(limits);
+  CHECK(server.listen("127.0.0.1", 0).ok());
+  server.route("GET", "/ok", [](const gbx::ui::HttpRequest&,
+                                gbx::ui::HttpResponse& response) {
+    response.set_body("{}");
+  });
+  std::thread thread([&server] { server.serve(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+  const int held = connect_to(server.port());
+  CHECK_GE(held, 0);
+  if (held >= 0) {
+    gbx::ui::HttpServer::write_all(held,
+                                   "GET /ok HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const auto response = exchange(server.port(), make_request("GET", "/ok"));
+    CHECK_MSG(has_status(response, 503), response.substr(0, 80));
+    ::close(held);
+  }
+  server.request_stop();
+  thread.join();
+}
