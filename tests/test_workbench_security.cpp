@@ -60,6 +60,9 @@ TEST(workbench_accepts_cookie_and_rejects_bad_origins) {
   CHECK_EQ(response.status, 403);
   response = gbx::test::http_request(port, "GET", "/api/nope", {}, token);
   CHECK_EQ(response.status, 404);
+  response = gbx::test::http_request(port, "GET", "/api/live");
+  CHECK_EQ(response.status, 403);
+  CHECK(response.body.find("session token") != std::string::npos);
   response = gbx::test::http_request(port, "POST", "/api/health", "{}", token);
   CHECK_EQ(response.status, 404);
   workbench.stop();

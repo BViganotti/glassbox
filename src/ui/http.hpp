@@ -50,19 +50,30 @@ struct HttpResponse {
 /// SSE connection handed to a stream handler after response headers are sent.
 class ConnectionStream {
  public:
+  /// Writes an SSE frame. Headers are sent lazily on the first write.
   bool write(std::string_view data);
   bool sse_event(std::string_view event, std::string_view data);
   bool comment(std::string_view text);
   bool alive() const;
   uint64_t bytes_sent() const { return bytes_; }
 
+  /// Rejects the stream before any SSE bytes with a normal HTTP response.
+  /// Used for authentication failures so unauthorized requests get a real 403
+  /// instead of a 200 stream carrying an error event.
+  bool reject(int status, std::string_view message);
+
  private:
   friend class HttpServer;
   ConnectionStream(int fd, const std::atomic<bool>* stop)
       : fd_(fd), stop_(stop) {}
+  bool send_headers();
+  bool ensure_finished();
+
   int fd_ = -1;
   const std::atomic<bool>* stop_ = nullptr;
   uint64_t bytes_ = 0;
+  bool headers_sent_ = false;
+  bool closed_ = false;
 };
 
 /// Minimal loopback HTTP/1.1 server: exact-path routing, one request per

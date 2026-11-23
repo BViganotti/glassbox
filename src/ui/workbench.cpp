@@ -504,7 +504,7 @@ struct Workbench::Impl {
                                           ui::ConnectionStream& stream) {
       ui::HttpResponse auth;
       if (!authorized(request, auth, true)) {
-        stream.sse_event("error", json_error("missing or invalid session token"));
+        stream.reject(403, "missing or invalid session token");
         return;
       }
       uint64_t cursor = 0;

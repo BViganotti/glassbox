@@ -269,14 +269,51 @@ void HttpResponse::set_error(int code, std::string message) {
 }
 
 bool ConnectionStream::alive() const {
-  return fd_ >= 0 && stop_ != nullptr && !stop_->load();
+  return fd_ >= 0 && !closed_ && stop_ != nullptr && !stop_->load();
+}
+
+bool ConnectionStream::send_headers() {
+  if (headers_sent_) return true;
+  const std::string header =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Type: text/event-stream; charset=utf-8\r\n"
+      "Cache-Control: no-cache, no-store\r\n"
+      "Connection: close\r\n"
+      "X-Accel-Buffering: no\r\n"
+      "\r\n";
+  headers_sent_ = true;
+  return HttpServer::write_all(fd_, header);
 }
 
 bool ConnectionStream::write(std::string_view data) {
   if (!alive()) return false;
-  if (!HttpServer::write_all(fd_, data)) return false;
+  if (!send_headers()) {
+    closed_ = true;
+    return false;
+  }
+  if (!HttpServer::write_all(fd_, data)) {
+    closed_ = true;
+    return false;
+  }
   bytes_ += data.size();
   return true;
+}
+
+bool ConnectionStream::reject(int status, std::string_view message) {
+  if (headers_sent_ || closed_) return false;
+  closed_ = true;
+  send_status(fd_, status, message);
+  return true;
+}
+
+bool ConnectionStream::ensure_finished() {
+  if (headers_sent_ || closed_) return true;
+  headers_sent_ = true;
+  closed_ = true;
+  const std::string response =
+      "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n"
+      "Cache-Control: no-store\r\nConnection: close\r\n\r\n";
+  return HttpServer::write_all(fd_, response);
 }
 
 bool ConnectionStream::sse_event(std::string_view event, std::string_view data) {
@@ -401,9 +438,10 @@ void HttpServer::request_stop() {
 
 void HttpServer::wait() {
   std::unique_lock lock(state_->wait_mu);
-  state_->wait_cv.wait_for(lock, std::chrono::seconds(5), [this] {
-    return state_->active.load() == 0;
-  });
+  // Workers are bounded (handlers return promptly and SSE checks the stop
+  // flag every 500 ms). Waiting without a timeout avoids destroying state
+  // under a live worker thread.
+  state_->wait_cv.wait(lock, [this] { return state_->active.load() == 0; });
 }
 
 bool HttpServer::write_all(int fd, std::string_view data) {
@@ -617,20 +655,13 @@ void HttpServer::handle_connection_state(const std::shared_ptr<State>& state,
   }
 
   if (stream) {
-    const std::string header =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/event-stream; charset=utf-8\r\n"
-        "Cache-Control: no-cache, no-store\r\n"
-        "Connection: close\r\n"
-        "X-Accel-Buffering: no\r\n"
-        "\r\n";
-    if (!write_all(fd, header)) return;
     ConnectionStream connection(fd, &state->stop);
     try {
       stream(request, connection);
     } catch (...) {
       // A stream failure just closes the connection.
     }
+    connection.ensure_finished();
     return;
   }
 

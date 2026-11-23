@@ -186,6 +186,28 @@ TEST(http_server_enforces_limits) {
   thread.join();
 }
 
+TEST(http_server_sse_rejection_and_empty_stream) {
+  gbx::ui::HttpServer server;
+  CHECK(server.listen("127.0.0.1", 0).ok());
+  server.stream_route(
+      "/denied", [](const gbx::ui::HttpRequest&,
+                    gbx::ui::ConnectionStream& stream) {
+        stream.reject(403, "no token");
+      });
+  server.stream_route(
+      "/empty", [](const gbx::ui::HttpRequest&,
+                   gbx::ui::ConnectionStream&) {});
+  std::thread thread([&server] { server.serve(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  auto response = exchange(server.port(), make_request("GET", "/denied"));
+  CHECK(has_status(response, 403));
+  CHECK(body_of(response).find("no token") != std::string::npos);
+  response = exchange(server.port(), make_request("GET", "/empty"));
+  CHECK(has_status(response, 204));
+  server.request_stop();
+  thread.join();
+}
+
 TEST(http_server_sse_stream) {
   gbx::ui::HttpServer server;
   CHECK(server.listen("127.0.0.1", 0).ok());
