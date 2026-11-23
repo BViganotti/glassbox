@@ -160,8 +160,12 @@ are no external fonts, CDNs, images or JavaScript libraries.
   candidates, counter sparklines, active spans, recent logs, event feed.
 - Flame: icicle canvas with zoom breadcrumbs, hover details, search highlight,
   sample/span modes, truncation notice.
+
+  ![flame](images/flame.png)
 - Heap: site table, treemap, object table, retained-graph mode, per-object
-  inspector with the originating allocation record.
+  inspector with the originating allocation record, and a moment export.
+
+  ![heap](images/heap.png)
 - Spans: waterfall canvas, active span tree, span table, inspector.
 - Logs: level filters, text filter, newest-first table.
 - State: merged snapshot state at T and A/B change view.

@@ -31,6 +31,12 @@ fonts or assets, and no network access at runtime.
 - **Query** — predicates such as `type:alloc AND size > 1024 AND site ~ "asset"`.
 - **Live recording** — record the demo while the UI streams events over SSE.
 
+![flame graph](docs/images/flame.png)
+*Sample-based flame graph with real symbols, zoomable frames and sample counts.*
+
+![heap](docs/images/heap.png)
+*Heap at the final moment: leak candidates, site table, treemap and owned objects.*
+
 ## Build
 
 Requires macOS, Apple Clang with C++20, CMake 3.20+ and Ninja.
