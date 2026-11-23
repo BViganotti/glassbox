@@ -16,8 +16,8 @@ machine described below. Nothing is fabricated or extrapolated.
 (4 records per iteration), with an 8,192-slot ring and 1 MiB chunks:
 
 ```
-Recorder append   397,085 records in 0.278 s · 1,428,092 ops/s · 20.6 MB/s · dropped=0
-Recorder finish   0.004 s
+Recorder append   399,386 records in 0.274 s · 1,455,388 ops/s · 20.9 MB/s · dropped=0
+Recorder finish   0.008 s
 ```
 
 The append path includes string interning, queue locking, writer-thread encoding
@@ -32,21 +32,22 @@ A synthetic trace with spans, allocations/frees, logs, samples and counters
 
 | Operation | Median |
 |---|---:|
-| Trace writer | 23.3 ms · 9.0M records/s |
-| Trace reader | 25.1 ms · 8.4M records/s |
+| Trace writer | 34.3 ms · 6.14M records/s |
+| Trace reader (streaming) | 26.1 ms · 8.07M records/s |
 | Trace memory | 47,104 KiB in memory |
-| Timeline (200 buckets) | 4.6 ms |
-| Heap reconstruction at T/2 | 8.2 ms |
-| Flame aggregation | 3.7 ms |
-| Moment diff (two heaps + analyses) | 21.7 ms |
+| Timeline (200 buckets) | 3.7 ms |
+| Heap reconstruction at T/2 | 7.4 ms |
+| Flame aggregation | 3.6 ms |
+| Moment diff (two heaps + analyses) | 20.0 ms |
 | Query scan (limit 500) | 0.1 ms |
 
 Notes:
 
 - Reading now streams chunk-by-chunk from the file, so the loader's peak memory
   is the decoded model plus one payload (8 MiB max) rather than the whole file.
-- Reading is dominated by validation (CRC, bounds checks, string interning), not
-  allocation.
+- Reading streams chunks from disk (peak memory is the decoded model plus one
+  8 MiB payload) and is dominated by validation (CRC, bounds checks, string
+  interning), not allocation.
 - Heap reconstruction and diff are O(records) sweeps; they are fast enough for
   interactive scrubbing on traces of this size, but a maximum-size trace (2M
   records) will be proportionally slower.
