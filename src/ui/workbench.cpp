@@ -473,6 +473,12 @@ struct Workbench::Impl {
                    if (const auto* sleep = body.find("sleep_spike")) {
                      demo.sleep_spike = sleep->as_boolean(true);
                    }
+                   if (const auto* seed = body.find("seed")) {
+                     demo.seed = static_cast<uint32_t>(
+                         std::clamp<int64_t>(
+                             static_cast<int64_t>(seed->as_number(7)), 0,
+                             0xffffffffll));
+                   }
                  }
                  start_demo(demo);
                  json::Writer writer;

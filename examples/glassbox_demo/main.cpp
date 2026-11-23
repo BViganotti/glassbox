@@ -23,6 +23,8 @@ int main(int argc, char** argv) {
       output = argv[++i];
     } else if (arg == "--frames" && i + 1 < argc) {
       demo.frames = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+    } else if (arg == "--seed" && i + 1 < argc) {
+      demo.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
     } else if (arg == "--no-browser") {
       open_browser = false;
     } else if (arg == "--no-serve") {
@@ -34,6 +36,7 @@ int main(int argc, char** argv) {
           "glassbox_demo: records the demo workload then opens the UI\n"
           "  --out <path>     trace output (default examples/traces/demo.gbt)\n"
           "  --frames <n>     frame count (default 90)\n"
+          "  --seed <n>       allocation/geometry seed (default 7)\n"
           "  --mach-sampler   also sample with Mach thread states\n"
           "  --no-browser     do not open the browser\n"
           "  --no-serve       record only\n");

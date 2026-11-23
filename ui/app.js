@@ -1688,7 +1688,12 @@
       const sleep = el('input');
       sleep.type = 'checkbox';
       sleep.checked = true;
-      append(grid, framesLabel, frames, samplerLabel, sampler, sleepLabel, sleep);
+      const seedLabel = el('label', '', 'Seed');
+      const seed = el('input');
+      seed.type = 'number';
+      seed.min = '0';
+      seed.value = '7';
+      append(grid, framesLabel, frames, seedLabel, seed, samplerLabel, sampler, sleepLabel, sleep);
       body.appendChild(grid);
       const foot = $('#modal-foot');
       clear(foot);
@@ -1698,6 +1703,7 @@
       start.addEventListener('click', guarded(async () => {
         const payload = {
           frames: Number(frames.value) || 90,
+          seed: Number(seed.value) || 0,
           sampler: sampler.checked,
           sleep_spike: sleep.checked,
         };
