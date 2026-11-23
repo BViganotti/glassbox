@@ -46,7 +46,19 @@ First complete release: recorder, trace format, analysis, workbench and demo.
 - Tests: 120+ unit tests, HTTP/SSE integration tests, deterministic fuzzers for
   reader/query/JSON/HTTP/roundtrip, and a benchmark suite.
 - Documentation for the trace format, recorder, analysis, query, workbench,
-  testing and limitations.
+  testing, portability, packaging and limitations.
+- Streaming chunk-by-chunk trace loading with a decoded-memory budget; file
+  limit raised to 2 GiB and record/field caps raised with explicit rejection.
+- Linux support (verified in Ubuntu 24.04): platform seam for thread names,
+  random tokens, no-SIGPIPE sends and browser launch; Mach sampler compiled
+  only on macOS with a validated stub elsewhere.
+- Mach sampler thread suspension around stack capture; sampler statistics
+  expose suspended thread count.
+- Hook option `min_size` to ignore tiny allocations.
+- Local macOS app bundle generation (`make bundle`, ad-hoc signed by default),
+  optional Developer ID signing, and a headless UI smoke suite.
+- Shareable query deep links (`q=...`) and larger configurable analysis caps.
+- Release/soak scripts and Docker-based Linux verification.
 
 ### Changed
 
